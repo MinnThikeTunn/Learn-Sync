@@ -1,0 +1,193 @@
+erDiagram
+    %% ==========================================
+    %% 1. USERS, AUTH & PREFERENCES
+    %% ==========================================
+    USERS {
+        uuid id PK
+        string email UK
+        string full_name
+        string learning_style
+        jsonb oauth_tokens
+        timestamp created_at
+        timestamp updated_at
+    }
+
+    COURSES {
+        uuid id PK
+        uuid user_id FK
+        string course_code
+        string course_name
+        string academic_term
+        timestamp created_at
+    }
+
+    %% ==========================================
+    %% 2. VIRTUAL FOLDERS & RAG SOURCES
+    %% ==========================================
+    VIRTUAL_FOLDERS {
+        uuid id PK
+        uuid course_id FK
+        uuid parent_folder_id FK
+        string folder_path
+        string bound_module_name
+        boolean is_high_priority
+        timestamp created_at
+    }
+
+    SOURCE_DOCUMENTS {
+        uuid id PK
+        uuid folder_id FK
+        string filename
+        string mime_type
+        string file_storage_uri
+        text raw_text_content
+        string parse_status
+        timestamp uploaded_at
+    }
+
+    DOCUMENT_CHUNKS {
+        uuid id PK
+        uuid document_id FK
+        uuid folder_id FK
+        text chunk_text
+        jsonb dense_embedding
+        text sparse_tokens_bm25
+        int token_count
+    }
+
+    %% ==========================================
+    %% 3. EVENTS, DEADLINES & WORKLOAD
+    %% ==========================================
+    ACADEMIC_EVENTS {
+        uuid id PK
+        uuid course_id FK
+        string title
+        string event_type
+        timestamp due_date
+        float grade_weight
+        string source_type
+        timestamp created_at
+    }
+
+    EVENT_FOLDER_BINDINGS {
+        uuid id PK
+        uuid event_id FK
+        uuid folder_id FK
+    }
+
+    WORKLOAD_SCORE_LOGS {
+        uuid id PK
+        uuid user_id FK
+        float workload_score_w
+        string evaluated_mode
+        jsonb contributing_event_ids
+        timestamp logged_at
+    }
+
+    %% ==========================================
+    %% 4. KNOWLEDGE COMPONENTS & ACTIVE RECALL
+    %% ==========================================
+    KNOWLEDGE_COMPONENTS {
+        uuid id PK
+        uuid course_id FK
+        uuid folder_id FK
+        string name
+        text description
+        float mastery_probability
+    }
+
+    STUDY_ARTIFACTS {
+        uuid id PK
+        uuid folder_id FK
+        string learning_style
+        string workload_mode
+        string artifact_type
+        string title
+        text content_payload
+        timestamp created_at
+    }
+
+    PRECISION_GAPS {
+        uuid id PK
+        uuid user_id FK
+        uuid kc_id FK
+        uuid folder_id FK
+        text student_explanation
+        jsonb missing_concepts
+        jsonb misconceptions
+        float precision_score
+        timestamp evaluated_at
+    }
+
+    %% ==========================================
+    %% 5. SPACED REPETITION & BURNOUT GUARD
+    %% ==========================================
+    FLASHCARDS {
+        uuid id PK
+        uuid folder_id FK
+        uuid kc_id FK
+        uuid gap_id FK
+        text front_prompt
+        text back_solution
+        int failure_count
+        boolean is_leech
+        float stability
+        float difficulty
+        int reps
+        int lapses
+        string state
+        timestamp due_date
+        timestamp last_review
+    }
+
+    REVIEW_LOGS {
+        uuid id PK
+        uuid flashcard_id FK
+        int rating
+        int state
+        float scheduled_days
+        float elapsed_days
+        float retention_estimate
+        string applied_mode
+        timestamp reviewed_at
+    }
+
+    BURNOUT_TRIGGERS {
+        uuid id PK
+        uuid user_id FK
+        string trigger_condition
+        string prompt_text
+        int estimated_seconds
+        boolean student_engaged
+        timestamp triggered_at
+    }
+
+    %% ==========================================
+    %% RELATIONSHIPS & CARDINALITIES
+    %% ==========================================
+    USERS ||--o{ COURSES : "enrolls_in"
+    USERS ||--o{ WORKLOAD_SCORE_LOGS : "generates"
+    USERS ||--o{ BURNOUT_TRIGGERS : "receives"
+    USERS ||--o{ PRECISION_GAPS : "attempts"
+
+    COURSES ||--|{ VIRTUAL_FOLDERS : "structures"
+    COURSES ||--o{ ACADEMIC_EVENTS : "schedules"
+    COURSES ||--o{ KNOWLEDGE_COMPONENTS : "contains"
+
+    VIRTUAL_FOLDERS ||--o{ VIRTUAL_FOLDERS : "nests"
+    VIRTUAL_FOLDERS ||--o{ SOURCE_DOCUMENTS : "stores"
+    VIRTUAL_FOLDERS ||--o{ DOCUMENT_CHUNKS : "scopes"
+    VIRTUAL_FOLDERS ||--o{ STUDY_ARTIFACTS : "hosts"
+    VIRTUAL_FOLDERS ||--o{ FLASHCARDS : "scopes"
+    VIRTUAL_FOLDERS ||--o{ EVENT_FOLDER_BINDINGS : "binds_to"
+
+    SOURCE_DOCUMENTS ||--|{ DOCUMENT_CHUNKS : "chunked_into"
+
+    ACADEMIC_EVENTS ||--o{ EVENT_FOLDER_BINDINGS : "associates"
+
+    KNOWLEDGE_COMPONENTS ||--o{ FLASHCARDS : "tested_by"
+    KNOWLEDGE_COMPONENTS ||--o{ PRECISION_GAPS : "evaluated_in"
+
+    PRECISION_GAPS ||--o{ FLASHCARDS : "spawns"
+
+    FLASHCARDS ||--o{ REVIEW_LOGS : "logged_by"

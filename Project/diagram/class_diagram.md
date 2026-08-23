@@ -1,0 +1,336 @@
+# LearnSync AI - Class Diagram & Domain Model
+
+This document contains the structural class diagram for **LearnSync AI**, derived from [`CONTEXT.md`](file:///D:/learnSync/CONTEXT.md) and the specifications in [`Project/LearnSync_AI_SRS.md`](file:///D:/learnSync/Project/LearnSync_AI_SRS.md) and [`Project/LearnSync_AI_Project_Proposal_v2.md`](file:///D:/learnSync/Project/LearnSync_AI_Project_Proposal_v2.md).
+
+```mermaid
+classDiagram
+    direction TB
+
+    %% ==========================================
+    %% 1. CORE DOMAIN & USER MANAGEMENT
+    %% ==========================================
+    class User {
+        +UUID userId
+        +string email
+        +string name
+        +LearningStyle primaryLearningStyle
+        +OAuthCredentials googleCredentials
+        +getProfile() UserProfile
+        +updateLearningStyle(LearningStyle style) void
+    }
+
+    class Course {
+        +UUID courseId
+        +string courseCode
+        +string courseName
+        +string academicTerm
+        +getVirtualFolderHierarchy() List~VirtualFolder~
+        +getUpcomingEvents() List~AcademicEvent~
+    }
+
+    class VirtualFolder {
+        +UUID folderId
+        +UUID courseId
+        +Optional~UUID~ parentFolderId
+        +string folderPath
+        +string boundModuleName
+        +boolean isHighPriorityFocus
+        +createChildFolder(string name) VirtualFolder
+        +addSourceDocument(SourceDocument doc) void
+        +listDocuments() List~SourceDocument~
+        +markPriority(boolean priority) void
+    }
+
+    class SourceDocument {
+        +UUID documentId
+        +UUID folderId
+        +string filename
+        +string mimeType
+        +string rawTextContent
+        +DateTime uploadedAt
+        +DocumentStatus parseStatus
+        +chunkAndEmbed() List~DocumentChunk~
+    }
+
+    class DocumentChunk {
+        +UUID chunkId
+        +UUID documentId
+        +UUID folderId
+        +string textContent
+        +List~float~ denseEmbedding
+        +string bm25SparseTokens
+        +int tokenCount
+    }
+
+    %% ==========================================
+    %% 2. ACADEMIC EVENTS & WORKLOAD ENGINE
+    %% ==========================================
+    class AcademicEvent {
+        +UUID eventId
+        +UUID courseId
+        +string title
+        +EventType eventType
+        +DateTime dueDate
+        +float gradeWeight
+        +EventSource source
+        +List~UUID~ boundFolderIds
+        +calculateUrgencyDays() float
+        +bindToFolder(UUID folderId) void
+    }
+
+    class WorkloadEngine {
+        +UUID engineId
+        +float rollingWindowDays
+        +computeWorkloadScore(UUID userId) WorkloadScoreLog
+        +calculateDeadlineDensity(List~AcademicEvent~ events) float
+        +aggregateEventWeights(List~AcademicEvent~ events) float
+        +logScoreHistory(WorkloadScoreLog scoreLog) void
+    }
+
+    class WorkloadScoreLog {
+        +UUID logId
+        +UUID userId
+        +float workloadScoreW
+        +WorkloadMode evaluatedMode
+        +List~UUID~ contributingEventIds
+        +DateTime timestamp
+    }
+
+    class HysteresisController {
+        +float freeModeUpperThreshold
+        +float busyModeLowerThreshold
+        +WorkloadMode currentMode
+        +evaluateModeTransition(float currentScore) WorkloadMode
+        +isDeadBand(float score) boolean
+        +logTransition(WorkloadMode prevMode, WorkloadMode newMode) void
+    }
+
+    %% ==========================================
+    %% 3. PEDAGOGY, ADAPTIVE LEARNING & ACTIVE RECALL
+    %% ==========================================
+    class KnowledgeComponent {
+        +UUID kcId
+        +UUID courseId
+        +string name
+        +string description
+        +float masteryProbability
+        +updateMastery(boolean isCorrect) float
+    }
+
+    class AdaptiveLearningEngine {
+        +UUID engineId
+        +generateStudyArtifact(UUID folderId, LearningStyle style, WorkloadMode mode) StudyArtifact
+        +filterParetoCorePrimitives(List~KnowledgeComponent~ kcs) List~KnowledgeComponent~
+    }
+
+    class StudyArtifact {
+        +UUID artifactId
+        +UUID folderId
+        +LearningStyle style
+        +WorkloadMode mode
+        +string title
+        +string contentPayload
+        +ArtifactType artifactType
+        +renderView() string
+    }
+
+    class FeynmanLoopEngine {
+        +UUID engineId
+        +generateAnalogy(UUID folderId) string
+        +evaluateRecallExplanation(string studentInput, string referenceContext) PrecisionGapResult
+        +convertGapsToFlashcards(PrecisionGapResult gapResult) List~Flashcard~
+    }
+
+    class PrecisionGapResult {
+        +UUID gapId
+        +UUID kcId
+        +List~string~ missingConcepts
+        +List~string~ misconceptions
+        +float precisionScore
+    }
+
+    %% ==========================================
+    %% 4. SPACED REPETITION & BURNOUT GUARD
+    %% ==========================================
+    class Flashcard {
+        +UUID cardId
+        +UUID folderId
+        +UUID kcId
+        +string frontPrompt
+        +string backSolution
+        +int failureCount
+        +boolean isLeech
+        +FSRSCardState fsrsState
+        +recordReview(ReviewRating rating, WorkloadMode activeMode) ReviewLog
+        +flagAsLeech() void
+        +simplifyCard(string simplifiedContent) void
+    }
+
+    class FSRSScheduler {
+        +float standardRetentionTarget
+        +float busyModeRetentionTarget
+        +float intervalExpansionFactor
+        +calculateNextInterval(Flashcard card, ReviewRating rating, WorkloadMode mode) FSRSCardState
+        +applyParetoFilter(List~Flashcard~ queue) List~Flashcard~
+    }
+
+    class ReviewLog {
+        +UUID reviewLogId
+        +UUID cardId
+        +ReviewRating rating
+        +float estimatedRetention
+        +WorkloadMode appliedMode
+        +DateTime reviewedAt
+    }
+
+    class LeechDetector {
+        +int failureThreshold
+        +checkLeechCondition(Flashcard card) boolean
+        +pauseCard(Flashcard card) void
+        +requestLLMRewrite(Flashcard card) string
+    }
+
+    class BurnoutGuard {
+        +UUID guardId
+        +int maxDeadlinesIn48Hours
+        +int maxConsecutiveZeroFreeDays
+        +checkHighRiskCondition(List~AcademicEvent~ events, List~CalendarSlot~ slots) boolean
+        +generateBMAPMicroTask(UUID folderId) MicroTaskPrompt
+        +suppressFullStudySessions() void
+        +logTrigger(BurnoutTrigger trigger) void
+    }
+
+    class MicroTaskPrompt {
+        +UUID taskId
+        +string shortPrompt
+        +int estimatedSeconds
+        +boolean isCompleted
+        +executeTask() void
+    }
+
+    class BurnoutTrigger {
+        +UUID triggerId
+        +UUID userId
+        +string triggerCondition
+        +DateTime triggeredAt
+        +boolean studentEngaged
+    }
+
+    %% ==========================================
+    %% 5. RETRIEVAL & INGESTION
+    %% ==========================================
+    class GroundedRAGRetriever {
+        +UUID retrieverId
+        +hybridRRFSearch(string query, UUID folderId, int topK) List~DocumentChunk~
+        +calculateRRFScore(int denseRank, int sparseRank) float
+    }
+
+    class SyllabusParser {
+        +parsePDF(byte[] fileData) ParsedSyllabusData
+        +executeDoclingTableFormer(byte[] fileData) ParsedSchedule
+        +fallbackVisionLLM(byte[] fileData) ParsedSchedule
+    }
+
+    %% ==========================================
+    %% 6. ENUMERATIONS
+    %% ==========================================
+    class LearningStyle {
+        <<enumeration>>
+        VISUAL
+        AUDITORY
+        READ_WRITE
+        KINESTHETIC
+    }
+
+    class WorkloadMode {
+        <<enumeration>>
+        FREE_MODE
+        BUSY_MODE
+        DEAD_BAND
+    }
+
+    class EventType {
+        <<enumeration>>
+        ASSIGNMENT
+        QUIZ
+        EXAM
+        PROJECT
+        MILESTONE
+    }
+
+    class EventSource {
+        <<enumeration>>
+        SYLLABUS_DOCLING
+        GOOGLE_CALENDAR
+        GMAIL_SCOPED
+        MANUAL_ENTRY
+    }
+
+    class ReviewRating {
+        <<enumeration>>
+        AGAIN
+        HARD
+        GOOD
+        EASY
+    }
+
+    %% ==========================================
+    %% 7. RELATIONSHIPS & ASSOCIATIONS
+    %% ==========================================
+    User "1" *-- "0..*" Course : enrolls_in
+    User "1" o-- "1" LearningStyle : prefers
+    User "1" *-- "0..*" WorkloadScoreLog : tracks
+    User "1" *-- "0..*" BurnoutTrigger : receives
+
+    Course "1" *-- "1..*" VirtualFolder : organizes
+    Course "1" *-- "0..*" AcademicEvent : contains
+    Course "1" *-- "0..*" KnowledgeComponent : defines
+
+    VirtualFolder "1" *-- "0..*" VirtualFolder : subfolders
+    VirtualFolder "1" *-- "0..*" SourceDocument : stores
+    VirtualFolder "1" *-- "0..*" Flashcard : scopes
+    VirtualFolder "1" *-- "0..*" StudyArtifact : scopes
+    VirtualFolder "0..*" ..> "0..*" AcademicEvent : binds_to
+
+    SourceDocument "1" *-- "1..*" DocumentChunk : chunked_into
+    DocumentChunk ..> GroundedRAGRetriever : indexed_by
+
+    WorkloadEngine ..> AcademicEvent : reads
+    WorkloadEngine ..> WorkloadScoreLog : produces
+    WorkloadEngine --> HysteresisController : drives
+
+    HysteresisController ..> WorkloadMode : resolves
+    HysteresisController ..> AdaptiveLearningEngine : instructs
+    HysteresisController ..> FSRSScheduler : modulates
+    HysteresisController ..> BurnoutGuard : alerts
+
+    AdaptiveLearningEngine ..> GroundedRAGRetriever : queries
+    AdaptiveLearningEngine ..> StudyArtifact : generates
+    StudyArtifact o-- LearningStyle : styled_as
+    StudyArtifact o-- WorkloadMode : paced_by
+
+    FeynmanLoopEngine ..> GroundedRAGRetriever : verifies_with
+    FeynmanLoopEngine ..> PrecisionGapResult : detects
+    PrecisionGapResult ..> Flashcard : creates
+
+    Flashcard "1" *-- "0..*" ReviewLog : records
+    Flashcard ..> KnowledgeComponent : targets
+    FSRSScheduler ..> Flashcard : schedules
+    FSRSScheduler ..> ReviewLog : evaluates
+    LeechDetector ..> Flashcard : monitors_and_pauses
+
+    BurnoutGuard ..> AcademicEvent : inspects
+    BurnoutGuard ..> MicroTaskPrompt : triggers
+    BurnoutGuard ..> BurnoutTrigger : logs
+
+    SyllabusParser ..> VirtualFolder : builds
+    SyllabusParser ..> AcademicEvent : extracts
+```
+
+## Domain Entity Design Notes
+
+- **[VirtualFolder](file:///D:/learnSync/CONTEXT.md#L23-L26)**: Scopes document ingestion, flashcard generation, and [Grounded RAG (RRF)](file:///D:/learnSync/CONTEXT.md#L39-L42) retrieval.
+- **[WorkloadEngine & HysteresisController](file:///D:/learnSync/CONTEXT.md#L7-L22)**: Computes continuous rolling $W(t) \in [0.0, 1.0]$ and regulates transitions between `FREE_MODE` ($\le 0.55$) and `BUSY_MODE` ($> 0.70$) across the dead-band ($0.55–0.70$).
+- **[KnowledgeComponent (KC)](file:///D:/learnSync/CONTEXT.md#L27-L30)**: Atomic curriculum unit supporting mastery tracking and Pareto core primitive filtering.
+- **[FSRSScheduler & LeechDetector](file:///D:/learnSync/CONTEXT.md#L31-L34)**: Adapts retention targets and auto-pauses cards failing $\ge 4$ times.
+- **[BurnoutGuard](file:///D:/learnSync/CONTEXT.md#L35-L38)**: Monitors acute deadline clusters ($\ge 3$ deadlines in 48h) and issues low-barrier $B=MAP$ micro-tasks.

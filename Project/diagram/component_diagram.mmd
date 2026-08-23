@@ -1,0 +1,91 @@
+flowchart TD
+    %% ==========================================================
+    %% Client & Edge Tier (On-Device Local Intelligence)
+    %% ==========================================================
+    subgraph EDGE_TIER["Client & Edge Device Tier (React / Next.js / WebAssembly)"]
+        UI_DASH["Adaptive Dashboard & Focus View"]
+        UI_VF_BROWSER["Virtual Folder Browser & File Ingestion"]
+        UI_REVIEW["Flashcard Review & Feynman Active Recall"]
+        UI_GUARD["Burnout Guard Modal - B=MAP Micro-Tasks"]
+        LOCAL_TRAINER["On-Device DP Trainer (Local SGD + L2 Clip + Gaussian Noise)"]
+        LOCAL_STORE[("Local Encrypted Store - OPFS / SQLite")]
+    end
+
+    %% ==========================================================
+    %% Ingestion & External Connectors
+    %% ==========================================================
+    subgraph INGESTION_TIER["Ingestion & External Event Connectors"]
+        DOCLING["Docling Parser (IBM TableFormer)"]
+        FALLBACK_LLM["Vision-LLM Fallback (Gemini 3 Flash)"]
+        GCAL_SYNC["Google Calendar Sync (OAuth 2.0)"]
+        GMAIL_MONITOR["Gmail Deadline Monitor (Scoped)"]
+    end
+
+    %% ==========================================================
+    %% Distributed Gateway & Message Bus
+    %% ==========================================================
+    subgraph DISTRIBUTED_CORE["Distributed Orchestration & Messaging Layer"]
+        API_GATEWAY["FastAPI Gateway & Envoy Proxy"]
+        FED_AGGREGATOR["Federated Aggregation Coordinator (FedAvg + Differential Privacy)"]
+        EVENT_BUS["Asynchronous Message Broker - RabbitMQ AMQP"]
+    end
+
+    %% ==========================================================
+    %% Decoupled Multi-Agent Microservices Tier
+    %% ==========================================================
+    subgraph AGENT_TIER["Multi-Agent Microservices Tier"]
+        WORKLOAD_AGENT["Workload & Fatigue Agent (W(t) Rolling Score + Hysteresis)"]
+        LEARNING_AGENT["Learning Path Agent (BKT Mastery + Elastic FSRS + Leech Detector)"]
+        RAG_AGENT["Resource Scraping & Grounded RAG Agent (RRF Scoped Search)"]
+        BURNOUT_AGENT["Burnout Guard Agent (B=MAP Intervention Engine)"]
+    end
+
+    %% ==========================================================
+    %% Storage Tier - Supabase
+    %% ==========================================================
+    subgraph STORAGE_TIER["Supabase (PostgreSQL 16 + pgvector + RLS)"]
+        SUPABASE_REL[("Supabase Relational DB\n- Profiles, Courses, Virtual Folders\n- Events, Workload Logs, Mastery")]
+        SUPABASE_VEC[("Supabase Vector Store (1536-dim pgvector HNSW + RRF RPC)")]
+    end
+
+    %% ==========================================================
+    %% Data Flows & Distributed Inter-Agent Communication
+    %% ==========================================================
+    %% Ingestion to Gateway/Agents
+    DOCLING -->|Table schedule data| RAG_AGENT
+    DOCLING -.->|Low confidence fallback| FALLBACK_LLM
+    FALLBACK_LLM -->|Extracted schedule| RAG_AGENT
+    GCAL_SYNC -->|Deadlines & Free/Busy slots| API_GATEWAY
+    GMAIL_MONITOR -->|Deadline shift notices| API_GATEWAY
+
+    %% Edge to Distributed Gateway
+    UI_VF_BROWSER -->|Course uploads & folder structure| API_GATEWAY
+    UI_REVIEW -->|Submit review feedback & Feynman answers| API_GATEWAY
+    LOCAL_TRAINER -->|DP-Perturbed local gradient delta| FED_AGGREGATOR
+    FED_AGGREGATOR -->|FedAvg global weights broadcast| LOCAL_TRAINER
+
+    API_GATEWAY -->|Publish [event.ingested / review.logged]| EVENT_BUS
+    FED_AGGREGATOR -->|Publish [global.model.updated]| EVENT_BUS
+
+    %% Event Bus Subscriptions to Agents
+    EVENT_BUS -->|Subscribe: event.updated| WORKLOAD_AGENT
+    EVENT_BUS -->|Subscribe: workload.spike.detected| LEARNING_AGENT
+    EVENT_BUS -->|Subscribe: workload.spike.detected| BURNOUT_AGENT
+    EVENT_BUS -->|Subscribe: doc.uploaded| RAG_AGENT
+
+    %% Agent Database Operations
+    WORKLOAD_AGENT -->|Persist W(t) & mode state| SUPABASE_REL
+    WORKLOAD_AGENT -->|Emit workload.spike.detected| EVENT_BUS
+    
+    LEARNING_AGENT -->|Query & update FSRS card states| SUPABASE_REL
+    LEARNING_AGENT -->|Query mastery state| SUPABASE_REL
+
+    RAG_AGENT -->|Partitioned chunk storage & index| SUPABASE_VEC
+    RAG_AGENT -->|Execute match_folder_chunks RPC| SUPABASE_VEC
+
+    BURNOUT_AGENT -->|Emit bmap.microtask.prompt| EVENT_BUS
+
+    %% Edge consumption
+    EVENT_BUS -->|Push mode state & B=MAP prompts via SSE/WS| UI_DASH
+    EVENT_BUS -->|Push micro-task alerts| UI_GUARD
+    RAG_AGENT -->|Deliver grounded artifacts| UI_DASH

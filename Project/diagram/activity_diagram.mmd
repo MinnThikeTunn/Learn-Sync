@@ -1,0 +1,76 @@
+flowchart TD
+    %% ==========================================================
+    %% START & INGESTION
+    %% ==========================================================
+    Start([Start Session / Calendar Trigger]) --> IngestEvents[Ingest Course Materials, Calendar & Gmail Deadlines]
+    IngestEvents --> ParseSchedule[Docling TableFormer PDF Parsing with Vision-LLM Fallback]
+    ParseSchedule --> CreateVFolders[Build Course-Bound Virtual Folder Hierarchy in Supabase]
+    CreateVFolders --> ComputeWt[Compute 3-Day Lookahead Workload Score W-t]
+
+    %% ==========================================================
+    %% WORKLOAD EVALUATION & HYSTERESIS
+    %% ==========================================================
+    ComputeWt --> CheckBurnout{Burnout Condition Met?<br/>3+ Deadlines in 48h OR 0 Free Slots in 2 Days}
+    
+    CheckBurnout -- Yes --> TriggerBurnout[Activate Burnout Guard<br/>Suppress Long Sessions]
+    TriggerBurnout --> IssueBMAP[Issue 90-Second B=MAP Micro-Task Prompt]
+    IssueBMAP --> StudentBMAP([Student Completes 90s Micro-Task])
+    StudentBMAP --> LogTelemetry[Log Trigger & Telemetry to Supabase]
+
+    CheckBurnout -- No --> CheckMode{Evaluate Workload Score W-t}
+
+    CheckMode -- W-t > 0.70 --> SetBusyMode[Enter BUSY MODE]
+    CheckMode -- W-t <= 0.55 --> SetFreeMode[Enter FREE MODE]
+    CheckMode -- 0.55 < W-t <= 0.70 --> RetainMode[Hysteresis Dead-Band<br/>Retain Current Mode State]
+
+    %% ==========================================================
+    %% STUDY PATH GENERATION
+    %% ==========================================================
+    SetBusyMode --> ConfigureBusy[Configure Busy Mode Parameters:<br/>• Target Retention R_c = 80%<br/>• Interval Expansion = 1.75x<br/>• Pareto 80/20 Core Primitives Filter]
+    SetFreeMode --> ConfigureFree[Configure Free Mode Parameters:<br/>• Target Retention R_c = 90%<br/>• Standard FSRS Intervals<br/>• Full Curriculum Scope]
+    RetainMode --> FetchContext[Fetch Active Virtual Folder Scope]
+
+    ConfigureBusy --> FetchContext
+    ConfigureFree --> FetchContext
+
+    FetchContext --> ExecuteRAG[Execute Grounded RRF Hybrid Search in Supabase<br/>Dense Embedding + BM25 Trigram via match_folder_chunks RPC]
+    
+    ExecuteRAG --> GenerateArtifact[Generate Adaptive Study Content based on Learning Style]
+
+    %% ==========================================================
+    %% MULTIMODAL RENDERING & ACTIVE RECALL
+    %% ==========================================================
+    GenerateArtifact --> RenderUI[Render Dashboard & Multimodal Study View]
+    RenderUI --> ChooseActivity{Student Chooses Activity}
+
+    ChooseActivity -- Flashcard Review --> ReviewDeck[Fetch Due Flashcards for Folder]
+    ReviewDeck --> AnswerCard[Student Answers Card & Rates Difficulty]
+    
+    AnswerCard --> CheckLeech{Card Failures >= 4?}
+    CheckLeech -- Yes --> FlagLeech[Flag as Leech & Auto-Pause from Active Queue]
+    FlagLeech --> RequestRewrite[Request LLM Simplification]
+    RequestRewrite --> UpdateFSRS[Update FSRS Stability, Difficulty & Due Date]
+    
+    CheckLeech -- No --> UpdateFSRS
+    UpdateFSRS --> SaveReviewLog[Persist Review Log to Supabase]
+
+    ChooseActivity -- Feynman Active Recall --> PromptFeynman[Prompt Plain-Language Explanation of Concept]
+    PromptFeynman --> SubmitExplanation[Student Explains Concept in Own Words]
+    SubmitExplanation --> GapAnalysis[Automated Precision-Gap Analysis vs Source Corpus]
+    
+    GapAnalysis --> CheckGaps{Knowledge Gaps Found?}
+    CheckGaps -- Yes --> SpawnCards[Auto-Generate Targeted Flashcards for Gaps]
+    SpawnCards --> DisplayFeedback[Display Precision Feedback & Recommendations]
+    CheckGaps -- No --> UpdateMastery[Update Knowledge Component BKT Mastery in Supabase]
+    UpdateMastery --> DisplayFeedback
+
+    %% ==========================================================
+    %% EDGE FEDERATED TRAINING
+    %% ==========================================================
+    SaveReviewLog --> OnDeviceTrain[On-Device Local SGD Training on Activity Dwell Time]
+    DisplayFeedback --> OnDeviceTrain
+    LogTelemetry --> OnDeviceTrain
+
+    OnDeviceTrain --> PerturbGradients[Apply L2 Gradient Clipping & Inject Gaussian Noise DP]
+    PerturbGradients --> SendDelta[Send Perturbed Gradient Delta to FedAvg Aggregator]
+    SendDelta --> End([End Study Cycle / Await Next Trigger])
