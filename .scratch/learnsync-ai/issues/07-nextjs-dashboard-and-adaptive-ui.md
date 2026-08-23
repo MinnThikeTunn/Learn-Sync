@@ -9,12 +9,12 @@ Create the modern, responsive React / Next.js web client with Tailwind CSS follo
 - 05: Elastic Spaced Repetition (py-fsrs), Leech Detection & RabbitMQ Consumer
 - 06: Active Recall Feynman Loop, BKT Mastery & Burnout Guard (B=MAP)
 
-**Status:** ready-for-agent
+**Status:** done
 
-- [ ] Onboarding wizard captures initial learning style (Visual, Auditory, Read/Write, Kinesthetic) and Google OAuth connection.
-- [ ] Materialized Virtual Folder browser allows intuitive folder navigation, syllabus PDF drag-and-drop, and material scoping.
-- [ ] Adaptive Dashboard visually reflects current Workload Score $W(t)$, active mode state (Free vs. Busy banner), and upcoming high-priority focus folders.
-- [ ] Study artifact viewer renders interactive Mermaid sequence/flowcharts, code snippets, structured notes, and audio player components.
-- [ ] Spaced repetition review deck UI with rating buttons (Again, Hard, Good, Easy), leech indicators, and Feynman prompt response input.
-- [ ] Burnout Guard modal intercepts acute stress periods with 90-second $B=MAP$ micro-task exercises.
-- [ ] Component & end-to-end UI tests verify seamless state rendering and user feedback.
+- [x] Onboarding wizard captures initial learning style (Visual, Auditory, Read/Write, Kinesthetic) and Google OAuth connection.
+- [x] Materialized Virtual Folder browser allows intuitive folder navigation, syllabus PDF drag-and-drop, and material scoping.
+- [x] Adaptive Dashboard visually reflects current Workload Score $W(t)$, active mode state (Free vs. Busy banner), and upcoming high-priority focus folders.
+- [x] Study artifact viewer renders interactive Mermaid sequence/flowcharts, code snippets, structured notes, and audio player components.
+- [x] Spaced repetition review deck UI with rating buttons (Again, Hard, Good, Easy), leech indicators, and Feynman prompt response input.
+- [x] Burnout Guard modal intercepts acute stress periods with 90-second $B=MAP$ micro-task exercises.
+- [x] Component & end-to-end UI tests verify seamless state rendering and user feedback.

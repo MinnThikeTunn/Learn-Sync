@@ -1,0 +1,22 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  body {
+    @apply bg-obsidian-950 text-slate-100 antialiased selection:bg-accent-cyan/20 selection:text-accent-cyan;
+    font-feature-settings: "cv02", "cv03", "cv04", "cv11";
+  }
+}
+
+.glass-card {
+  @apply bg-obsidian-900/70 backdrop-blur-xl border border-slate-800/60 shadow-2xl rounded-[32px];
+}
+
+.glass-card-interactive {
+  @apply glass-card hover:border-slate-700/80 transition-all duration-300 hover:shadow-cyan-500/5;
+}
+
+.badge-pill {
+  @apply px-3 py-1 rounded-full text-xs font-semibold uppercase tracking-wider inline-flex items-center gap-1.5;
+}

@@ -73,3 +73,5 @@ class GenerateArtifactRequest(BaseModel):
     learning_style: LearningStyle
     workload_mode: Optional[WorkloadMode] = WorkloadMode.FREE
     custom_instructions: Optional[str] = None
+    chunks: Optional[List[Dict[str, Any]]] = None
+

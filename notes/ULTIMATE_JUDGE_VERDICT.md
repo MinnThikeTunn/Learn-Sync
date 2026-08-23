@@ -5,6 +5,24 @@
 **Status:** ⏳ Pending Specialist Review on Recent File Edits
 
 ## Outstanding File Edits Pending Judgment
+- `frontend\app\review\page.tsx`
+- `frontend\app\study\page.tsx`
+- `frontend\app\folders\page.tsx`
+- `frontend\app\page.tsx`
+- `frontend\app\layout.tsx`
+- `frontend\components\OnboardingModal.tsx`
+- `frontend\components\BurnoutGuardModal.tsx`
+- `frontend\components\WorkloadGauge.tsx`
+- `frontend\components\Navbar.tsx`
+- `frontend\app\globals.css`
+- `frontend\postcss.config.mjs`
+- `frontend\tailwind.config.ts`
+- `frontend\next.config.mjs`
+- `frontend\tsconfig.json`
+- `frontend\package.json`
+- `backend\tests\test_api.py`
+- `backend\app\main.py`
+- `backend\app\api\v1\endpoints.py`
 - `backend\tests\test_feynman_bkt_burnout.py`
 - `backend\app\services\burnout_guard.py`
 - `backend\app\services\feynman.py`
