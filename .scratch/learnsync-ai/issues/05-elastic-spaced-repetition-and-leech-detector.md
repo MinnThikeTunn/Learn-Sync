@@ -7,10 +7,10 @@ Implement the spaced-repetition flashcard service wrapping the `py-fsrs` schedul
 - 01: Supabase Backend Schema & Folder-Scoped Vector RPC Initialization
 - 03: Rolling Workload Engine W(t), Hysteresis State Machine & RabbitMQ Publisher
 
-**Status:** ready-for-agent
+**Status:** done
 
-- [ ] `py-fsrs` integration calculates stability, difficulty, lapses, and next due date per flashcard rating.
-- [ ] RabbitMQ consumer reacts to `workload.spike.detected` by dynamically scaling target retention $R_c = 80\%$ and expanding interval multiplier to $1.75\times$.
-- [ ] Leech detection flags cards with $\ge 4$ failure lapses, pauses them from the active queue, and creates LLM rewrite prompts.
-- [ ] Flashcard reviews and outcome logs persist to `flashcards` and `review_logs` tables in Supabase.
-- [ ] Unit tests verify interval expansion calculations, leech pausing, and recovery to standard parameters ($R_c = 90\%$) in Free Mode.
+- [x] `py-fsrs` integration calculates stability, difficulty, lapses, and next due date per flashcard rating.
+- [x] RabbitMQ consumer reacts to `workload.spike.detected` by dynamically scaling target retention $R_c = 80\%$ and expanding interval multiplier to $1.75\times$.
+- [x] Leech detection flags cards with $\ge 4$ failure lapses, pauses them from the active queue, and creates LLM rewrite prompts.
+- [x] Flashcard reviews and outcome logs persist to `flashcards` and `review_logs` tables in Supabase.
+- [x] Unit tests verify interval expansion calculations, leech pausing, and recovery to standard parameters ($R_c = 90\%$) in Free Mode.

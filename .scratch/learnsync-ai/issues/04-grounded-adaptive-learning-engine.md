@@ -8,10 +8,10 @@ Create the LLM-powered Adaptive Learning Engine that synthesizes personalized st
 - 02: Docling Syllabus Parser & Virtual Folder Ingestion Pipeline
 - 03: Rolling Workload Engine W(t), Hysteresis State Machine & RabbitMQ Publisher
 
-**Status:** ready-for-agent
+**Status:** done
 
-- [ ] Folder-scoped context assembler invokes Supabase `match_folder_chunks` RPC to ground prompts in course material.
-- [ ] Free Mode ($W(t) \le 0.55$) generates deep artifacts: Mermaid diagrams (Visual), Socratic audio dialogue (Auditory), comprehensive notes (Read/Write), and code labs (Kinesthetic).
-- [ ] Busy Mode ($W(t) > 0.70$) applies Pareto 80/20 filtering to generate core primitive cheat-sheets (Visual), 30-second audio recaps (Auditory), bullet summaries (Read/Write), and micro-snippets (Kinesthetic).
-- [ ] Insufficient retrieval confidence gracefully notifies the user rather than hallucinating unsupported facts.
-- [ ] End-to-end unit and generation tests verify artifact structure across all 8 (4 styles $\times$ 2 modes) combinations.
+- [x] Folder-scoped context assembler invokes Supabase `match_folder_chunks` RPC to ground prompts in course material.
+- [x] Free Mode ($W(t) \le 0.55$) generates deep artifacts: Mermaid diagrams (Visual), Socratic audio dialogue (Auditory), comprehensive notes (Read/Write), and code labs (Kinesthetic).
+- [x] Busy Mode ($W(t) > 0.70$) applies Pareto 80/20 filtering to generate core primitive cheat-sheets (Visual), 30-second audio recaps (Auditory), bullet summaries (Read/Write), and micro-snippets (Kinesthetic).
+- [x] Insufficient retrieval confidence gracefully notifies the user rather than hallucinating unsupported facts.
+- [x] End-to-end unit and generation tests verify artifact structure across all 8 (4 styles $\times$ 2 modes) combinations.

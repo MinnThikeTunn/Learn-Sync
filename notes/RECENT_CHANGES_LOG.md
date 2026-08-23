@@ -54,3 +54,11 @@
 - [2026-08-23T17:15:22.114Z] Modified file: `backend\app\core\events.py` - Pending specialist committee & Ultimate Judge review.
 - [2026-08-23T17:16:00.979Z] Modified file: `backend\tests\test_workload.py` - Pending specialist committee & Ultimate Judge review.
 - [2026-08-23T17:17:51.799Z] Modified file: `.scratch\learnsync-ai\issues\03-workload-engine-hysteresis-and-rabbitmq.md` - Pending specialist committee & Ultimate Judge review.
+- [2026-08-23T17:19:23.227Z] Modified file: `backend\app\schemas\adaptive.py` - Pending specialist committee & Ultimate Judge review.
+- [2026-08-23T17:19:52.743Z] Modified file: `backend\app\services\rag.py` - Pending specialist committee & Ultimate Judge review.
+- [2026-08-23T17:22:21.995Z] Modified file: `backend\tests\test_rag.py` - Pending specialist committee & Ultimate Judge review.
+- [2026-08-23T17:24:04.449Z] Modified file: `backend\app\schemas\fsrs.py` - Pending specialist committee & Ultimate Judge review.
+- [2026-08-23T17:27:01.232Z] Modified file: `backend\app\services\fsrs_engine.py` - Pending specialist committee & Ultimate Judge review.
+- [2026-08-23T17:27:31.168Z] Modified file: `backend\tests\test_fsrs.py` - Pending specialist committee & Ultimate Judge review.
+- [2026-08-23T17:28:11.901Z] Modified file: `.scratch\learnsync-ai\issues\04-grounded-adaptive-learning-engine.md` - Pending specialist committee & Ultimate Judge review.
+- [2026-08-23T17:28:22.653Z] Modified file: `.scratch\learnsync-ai\issues\05-elastic-spaced-repetition-and-leech-detector.md` - Pending specialist committee & Ultimate Judge review.

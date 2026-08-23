@@ -5,6 +5,12 @@
 **Status:** ⏳ Pending Specialist Review on Recent File Edits
 
 ## Outstanding File Edits Pending Judgment
+- `backend\tests\test_fsrs.py`
+- `backend\app\services\fsrs_engine.py`
+- `backend\app\schemas\fsrs.py`
+- `backend\tests\test_rag.py`
+- `backend\app\services\rag.py`
+- `backend\app\schemas\adaptive.py`
 - `backend\tests\test_workload.py`
 - `backend\app\core\events.py`
 - `backend\app\services\workload.py`
