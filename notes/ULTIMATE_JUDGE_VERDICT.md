@@ -5,6 +5,14 @@
 **Status:** ⏳ Pending Specialist Review on Recent File Edits
 
 ## Outstanding File Edits Pending Judgment
+- `backend\tests\test_workload.py`
+- `backend\app\core\events.py`
+- `backend\app\services\workload.py`
+- `backend\app\schemas\workload.py`
+- `backend\tests\test_parser.py`
+- `backend\app\services\parser.py`
+- `backend\app\schemas\folder.py`
+- `backend\app\schemas\syllabus.py`
 - `backend\tests\test_vector_rpc.py`
 - `backend\tests\test_supabase_schema.py`
 - `backend\tests\__init__.py`

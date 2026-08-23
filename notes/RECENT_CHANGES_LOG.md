@@ -44,3 +44,13 @@
 - [2026-08-23T17:05:48.463Z] Modified file: `backend\tests\test_supabase_schema.py` - Pending specialist committee & Ultimate Judge review.
 - [2026-08-23T17:06:05.316Z] Modified file: `backend\tests\test_vector_rpc.py` - Pending specialist committee & Ultimate Judge review.
 - [2026-08-23T17:06:41.174Z] Modified file: `.scratch\learnsync-ai\issues\01-supabase-schema-and-vector-rpc.md` - Pending specialist committee & Ultimate Judge review.
+- [2026-08-23T17:11:08.929Z] Modified file: `backend\app\schemas\syllabus.py` - Pending specialist committee & Ultimate Judge review.
+- [2026-08-23T17:11:27.156Z] Modified file: `backend\app\schemas\folder.py` - Pending specialist committee & Ultimate Judge review.
+- [2026-08-23T17:11:53.574Z] Modified file: `backend\app\services\parser.py` - Pending specialist committee & Ultimate Judge review.
+- [2026-08-23T17:12:09.212Z] Modified file: `backend\tests\test_parser.py` - Pending specialist committee & Ultimate Judge review.
+- [2026-08-23T17:13:59.781Z] Modified file: `.scratch\learnsync-ai\issues\02-docling-parser-and-virtual-folders.md` - Pending specialist committee & Ultimate Judge review.
+- [2026-08-23T17:14:15.092Z] Modified file: `backend\app\schemas\workload.py` - Pending specialist committee & Ultimate Judge review.
+- [2026-08-23T17:15:04.865Z] Modified file: `backend\app\services\workload.py` - Pending specialist committee & Ultimate Judge review.
+- [2026-08-23T17:15:22.114Z] Modified file: `backend\app\core\events.py` - Pending specialist committee & Ultimate Judge review.
+- [2026-08-23T17:16:00.979Z] Modified file: `backend\tests\test_workload.py` - Pending specialist committee & Ultimate Judge review.
+- [2026-08-23T17:17:51.799Z] Modified file: `.scratch\learnsync-ai\issues\03-workload-engine-hysteresis-and-rabbitmq.md` - Pending specialist committee & Ultimate Judge review.

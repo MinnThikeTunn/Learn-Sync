@@ -1,6 +1,12 @@
 {
   "version": 1,
   "skills": {
+    "agent-owasp-compliance": {
+      "source": "github/awesome-copilot",
+      "sourceType": "github",
+      "skillPath": "skills/agent-owasp-compliance/SKILL.md",
+      "computedHash": "3c461f890564aa52d154b64a85f70a396ff6533e68633fa02556ebbaa7b843e0"
+    },
     "ask-matt": {
       "source": "mattpocock/skills",
       "sourceType": "github",

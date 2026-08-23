@@ -6,10 +6,10 @@ Implement the continuous rolling Workload Score $W(t) \in [0.0, 1.0]$ computatio
 **Blocked by:**
 - 01: Supabase Backend Schema & Folder-Scoped Vector RPC Initialization
 
-**Status:** ready-for-agent
+**Status:** done
 
-- [ ] Workload engine implements rolling 3-day hyperbolic decay calculation: $W(t) = \min(1.0, \sum w_e / (\max(0.25, d_e(t)) \cdot \Gamma))$.
-- [ ] Schmitt-trigger hysteresis state machine prevents mode oscillation in the $0.55 < W(t) \le 0.70$ dead-band.
-- [ ] Recomputes and logs $W(t)$ and active mode transitions into `workload_logs` in Supabase.
-- [ ] Connects to RabbitMQ and broadcasts `workload.spike.detected` when $W(t)$ crosses $> 0.70$.
-- [ ] Unit & integration tests verify exact state retention across boundary score fluctuations.
+- [x] Workload engine implements rolling 3-day hyperbolic decay calculation: $W(t) = \min(1.0, \sum w_e / (\max(0.25, d_e(t)) \cdot \Gamma))$.
+- [x] Schmitt-trigger hysteresis state machine prevents mode oscillation in the $0.55 < W(t) \le 0.70$ dead-band.
+- [x] Recomputes and logs $W(t)$ and active mode transitions into `workload_logs` in Supabase.
+- [x] Connects to RabbitMQ and broadcasts `workload.spike.detected` when $W(t)$ crosses $> 0.70$.
+- [x] Unit & integration tests verify exact state retention across boundary score fluctuations.
