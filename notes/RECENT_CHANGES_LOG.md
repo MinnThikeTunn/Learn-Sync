@@ -94,3 +94,4 @@
 - [2026-08-23T17:53:27.898Z] Modified file: `supabase\schema.sql` - Pending specialist committee & Ultimate Judge review.
 - [2026-08-23T17:53:47.836Z] Modified file: `backend\app\services\feynman.py` - Pending specialist committee & Ultimate Judge review.
 - [2026-08-23T17:54:00.566Z] Modified file: `backend\app\services\burnout_guard.py` - Pending specialist committee & Ultimate Judge review.
+- [2026-08-23T18:31:26.397Z] Modified file: `README.md` - Pending specialist committee & Ultimate Judge review.

@@ -5,6 +5,7 @@
 **Status:** ⏳ Pending Specialist Review on Recent File Edits
 
 ## Outstanding File Edits Pending Judgment
+- `README.md`
 - `frontend\app\review\page.tsx`
 - `frontend\app\study\page.tsx`
 - `frontend\app\folders\page.tsx`
