@@ -73,6 +73,20 @@ class BurnoutGuardService:
                 action_type=BMAPActionType.SINGLE_FLASHCARD,
                 duration_seconds=90,
             )
+            # Emit to event publisher
+            try:
+                published = event_publisher._publish(
+                    routing_key="burnout.trigger.detected",
+                    payload={
+                        "user_id": str(request.user_id),
+                        "trigger_reason": trigger_reason,
+                        "deadline_count_48h": deadline_count,
+                        "free_slots_48h": free_slots,
+                        "timestamp": ref_time.isoformat(),
+                    }
+                )
+            except Exception:
+                published = False
 
         return BurnoutTriggerResponse(
             user_id=request.user_id,

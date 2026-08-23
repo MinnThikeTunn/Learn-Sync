@@ -301,18 +301,18 @@ BEGIN
         LIMIT match_count * 3
     )
     SELECT
-        d.id,
-        d.document_id,
-        d.folder_id,
-        d.content,
-        d.cosine_sim AS cosine_similarity,
+        COALESCE(d.id, s.id) AS id,
+        COALESCE(d.document_id, s.document_id) AS document_id,
+        COALESCE(d.folder_id, s.folder_id) AS folder_id,
+        COALESCE(d.content, s.content) AS content,
+        COALESCE(d.cosine_sim, 0.0)::REAL AS cosine_similarity,
         COALESCE(s.sparse_sim, 0.0)::REAL AS sparse_score,
         (
-            (1.0 / (k + d.dense_rank)) + 
+            (1.0 / (k + COALESCE(d.dense_rank, 1000))) + 
             (1.0 / (k + COALESCE(s.sparse_rank, 1000)))
         )::REAL AS rrf_score
     FROM dense_search d
-    LEFT JOIN sparse_search s ON d.id = s.id
+    FULL OUTER JOIN sparse_search s ON d.id = s.id
     ORDER BY rrf_score DESC
     LIMIT match_count;
 END;

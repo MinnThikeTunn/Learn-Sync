@@ -80,34 +80,35 @@ class FeynmanService:
         misconceptions: List[MisconceptionItem] = []
         generated_cards: List[FlashcardCreate] = []
 
-        # Analyze keywords & expected components
-        has_base_case = any(k in student_text for k in ["base case", "stop", "terminate", "exit condition", "boundary"])
-        has_stack_or_flow = any(k in student_text for k in ["call stack", "stack", "frame", "queue", "memory", "state", "step"])
-        has_infinite_loop_hazard = any(k in student_text for k in ["overflow", "infinite", "memory leak", "crash", "loop forever"])
+        # Analyze keywords & expected components from concept and context chunks
+        concept_terms = set(re.findall(r"\b\w{4,}\b", concept.lower()))
+        chunk_terms = set(re.findall(r"\b\w{4,}\b", chunks_text))
+        student_terms = set(re.findall(r"\b\w{4,}\b", student_text))
 
-        # Check for misconceptions
+        # Check for specific critical misconception patterns
         if "never terminates" in student_text or "infinite loop is required" in student_text:
             misconceptions.append(
                 MisconceptionItem(
-                    student_claim="Recursion requires an infinite loop to execute.",
-                    correct_fact="Recursion must strictly have a base case to terminate execution and unwind the call stack.",
-                    explanation="Without termination, recursion triggers call stack overflow.",
+                    student_claim="Process requires an infinite loop to execute.",
+                    correct_fact=f"{concept} must strictly have an explicit termination condition / base case to halt execution.",
+                    explanation="Without termination, state execution overflows memory.",
                     severity="critical"
                 )
             )
 
-        if "stored in hard drive" in student_text:
+        if "stored in hard drive" in student_text or "saved on disk permanently" in student_text:
             misconceptions.append(
                 MisconceptionItem(
-                    student_claim="Call stack frames are persisted to permanent hard drive disk.",
-                    correct_fact="Call stack frames reside in volatile RAM execution memory.",
-                    explanation="Each function call consumes temporary stack frames in RAM.",
+                    student_claim="Volatile execution stack frames are persisted to permanent hard drive disk.",
+                    correct_fact="Runtime execution structures reside in high-speed volatile RAM memory.",
+                    explanation="Stack frames are ephemeral and deallocated upon return.",
                     severity="critical"
                 )
             )
 
-        # Check missing components
-        if not has_base_case:
+        # Check missing key concept components
+        expected_anchors = list(concept_terms) + (list(chunk_terms)[:3] if chunk_terms else [])
+        if "recursion" in concept.lower() and not any(k in student_text for k in ["base case", "stop", "terminate", "exit", "boundary"]):
             missing_concepts.append(
                 FeynmanGapItem(
                     concept=concept,
@@ -115,12 +116,11 @@ class FeynmanService:
                     severity="critical"
                 )
             )
-
-        if not has_stack_or_flow and len(student_text.split()) < 30:
+        elif expected_anchors and not any(term in student_terms for term in expected_anchors[:2]):
             missing_concepts.append(
                 FeynmanGapItem(
                     concept=concept,
-                    missing_aspect="Mechanism of recursive state / call frames",
+                    missing_aspect=f"Core definitions and key principles of {concept}",
                     severity="medium"
                 )
             )

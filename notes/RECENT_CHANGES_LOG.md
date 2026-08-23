@@ -91,3 +91,6 @@
 - [2026-08-23T17:49:27.991Z] Modified file: `frontend\app\study\page.tsx` - Pending specialist committee & Ultimate Judge review.
 - [2026-08-23T17:49:52.592Z] Modified file: `frontend\app\review\page.tsx` - Pending specialist committee & Ultimate Judge review.
 - [2026-08-23T17:50:16.642Z] Modified file: `.scratch\learnsync-ai\issues\07-nextjs-dashboard-and-adaptive-ui.md` - Pending specialist committee & Ultimate Judge review.
+- [2026-08-23T17:53:27.898Z] Modified file: `supabase\schema.sql` - Pending specialist committee & Ultimate Judge review.
+- [2026-08-23T17:53:47.836Z] Modified file: `backend\app\services\feynman.py` - Pending specialist committee & Ultimate Judge review.
+- [2026-08-23T17:54:00.566Z] Modified file: `backend\app\services\burnout_guard.py` - Pending specialist committee & Ultimate Judge review.
