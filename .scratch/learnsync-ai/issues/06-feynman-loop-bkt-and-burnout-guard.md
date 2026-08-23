@@ -8,11 +8,11 @@ Build the Active Recall Feynman Loop and Burnout Guard intervention service. The
 - 04: Grounded Multimodal Adaptive Learning Engine (4 Styles x 2 Modes)
 - 05: Elastic Spaced Repetition (py-fsrs), Leech Detection & RabbitMQ Consumer
 
-**Status:** ready-for-agent
+**Status:** done
 
-- [ ] Feynman prompt generator produces plain-language analogies for active virtual folder topics.
-- [ ] Precision-gap analysis evaluates student explanations against source documents, identifying missing concepts and misconceptions.
-- [ ] Automatically converts detected knowledge gaps into new folder-scoped flashcards.
-- [ ] Bayesian Knowledge Tracing updates $P(L_t)$ posterior mastery probabilities in `student_kc_mastery`.
-- [ ] Burnout Guard detects critical deadline density and emits low-barrier 90-second $B=MAP$ micro-task prompts over RabbitMQ.
-- [ ] Unit & integration tests verify precision-gap parsing, card generation, and BKT mastery state transitions.
+- [x] Feynman prompt generator produces plain-language analogies for active virtual folder topics.
+- [x] Precision-gap analysis evaluates student explanations against source documents, identifying missing concepts and misconceptions.
+- [x] Automatically converts detected knowledge gaps into new folder-scoped flashcards.
+- [x] Bayesian Knowledge Tracing updates $P(L_t)$ posterior mastery probabilities in `student_kc_mastery`.
+- [x] Burnout Guard detects critical deadline density and emits low-barrier 90-second $B=MAP$ micro-task prompts over RabbitMQ.
+- [x] Unit & integration tests verify precision-gap parsing, card generation, and BKT mastery state transitions.

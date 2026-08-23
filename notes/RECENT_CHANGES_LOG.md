@@ -62,3 +62,11 @@
 - [2026-08-23T17:27:31.168Z] Modified file: `backend\tests\test_fsrs.py` - Pending specialist committee & Ultimate Judge review.
 - [2026-08-23T17:28:11.901Z] Modified file: `.scratch\learnsync-ai\issues\04-grounded-adaptive-learning-engine.md` - Pending specialist committee & Ultimate Judge review.
 - [2026-08-23T17:28:22.653Z] Modified file: `.scratch\learnsync-ai\issues\05-elastic-spaced-repetition-and-leech-detector.md` - Pending specialist committee & Ultimate Judge review.
+- [2026-08-23T17:30:40.911Z] Modified file: `backend\app\schemas\feynman.py` - Pending specialist committee & Ultimate Judge review.
+- [2026-08-23T17:31:09.019Z] Modified file: `backend\app\schemas\bkt.py` - Pending specialist committee & Ultimate Judge review.
+- [2026-08-23T17:31:14.592Z] Modified file: `backend\app\schemas\burnout.py` - Pending specialist committee & Ultimate Judge review.
+- [2026-08-23T17:32:35.427Z] Modified file: `backend\app\services\bkt.py` - Pending specialist committee & Ultimate Judge review.
+- [2026-08-23T17:32:56.943Z] Modified file: `backend\app\services\feynman.py` - Pending specialist committee & Ultimate Judge review.
+- [2026-08-23T17:33:11.296Z] Modified file: `backend\app\services\burnout_guard.py` - Pending specialist committee & Ultimate Judge review.
+- [2026-08-23T17:33:37.160Z] Modified file: `backend\tests\test_feynman_bkt_burnout.py` - Pending specialist committee & Ultimate Judge review.
+- [2026-08-23T17:34:18.112Z] Modified file: `.scratch\learnsync-ai\issues\06-feynman-loop-bkt-and-burnout-guard.md` - Pending specialist committee & Ultimate Judge review.

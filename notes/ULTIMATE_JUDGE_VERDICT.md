@@ -5,6 +5,13 @@
 **Status:** ⏳ Pending Specialist Review on Recent File Edits
 
 ## Outstanding File Edits Pending Judgment
+- `backend\tests\test_feynman_bkt_burnout.py`
+- `backend\app\services\burnout_guard.py`
+- `backend\app\services\feynman.py`
+- `backend\app\services\bkt.py`
+- `backend\app\schemas\burnout.py`
+- `backend\app\schemas\bkt.py`
+- `backend\app\schemas\feynman.py`
 - `backend\tests\test_fsrs.py`
 - `backend\app\services\fsrs_engine.py`
 - `backend\app\schemas\fsrs.py`
