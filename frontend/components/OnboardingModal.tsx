@@ -1,15 +1,22 @@
 "use client";
 
 import { useState } from "react";
-import { Eye, Headphones, BookOpen, Code2, Sparkles, Check } from "lucide-react";
+import { Eye, Headphones, BookOpen, Code2, Sparkles, Check, Loader2 } from "lucide-react";
+import { useAuth } from "../context/AuthContext";
+
+export type LearningStyleType = "visual" | "auditory" | "read_write" | "kinesthetic";
 
 interface OnboardingModalProps {
   isOpen: boolean;
-  onSave: (style: string) => void;
+  onSave: (style: LearningStyleType) => void;
 }
 
 export default function OnboardingModal({ isOpen, onSave }: OnboardingModalProps) {
-  const [selectedStyle, setSelectedStyle] = useState("visual");
+  const { profile, updateProfile } = useAuth();
+  const [selectedStyle, setSelectedStyle] = useState<LearningStyleType>(
+    (profile?.learning_style as LearningStyleType) || "visual"
+  );
+  const [saving, setSaving] = useState(false);
 
   if (!isOpen) return null;
 
@@ -44,16 +51,31 @@ export default function OnboardingModal({ isOpen, onSave }: OnboardingModalProps
     },
   ];
 
+  const handleConfirm = async () => {
+    setSaving(true);
+    try {
+      await updateProfile({
+        learning_style: selectedStyle as any,
+        onboarding_completed: true,
+      });
+    } catch (e) {
+      console.error("Failed to save profile during onboarding:", e);
+    } finally {
+      setSaving(false);
+      onSave(selectedStyle);
+    }
+  };
+
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-obsidian-950/85 backdrop-blur-lg animate-in fade-in duration-300">
-      <div className="glass-card max-w-2xl w-full p-8 border border-slate-700 shadow-2xl relative">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-brand-secondary/40 backdrop-blur-md animate-in fade-in duration-200">
+      <div className="bg-white max-w-2xl w-full p-6 sm:p-8 border border-brand-outline-variant shadow-elevation-lg rounded-[32px] relative">
         <div className="text-center mb-8">
-          <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-accent-cyan/10 border border-accent-cyan/20 text-accent-cyan text-xs font-bold uppercase tracking-wider mb-3">
-            <Sparkles className="w-3.5 h-3.5" />
+          <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-brand-tertiary-container border border-brand-tertiary/40 text-brand-on-tertiary-container text-xs font-bold uppercase tracking-wider mb-3">
+            <Sparkles className="w-3.5 h-3.5 text-brand-secondary" />
             <span>Personalized Co-Pilot Setup</span>
           </div>
-          <h2 className="text-3xl font-black text-white tracking-tight">Select Your Learning Style</h2>
-          <p className="text-slate-400 text-sm max-w-md mx-auto mt-2">
+          <h2 className="text-2xl sm:text-3xl font-black text-brand-secondary tracking-tight">Select Your Learning Style</h2>
+          <p className="text-brand-on-surface-variant text-sm max-w-md mx-auto mt-2 leading-relaxed">
             LearnSync AI dynamically customizes study artifacts, diagrams, audio scripts, and code exercises to your cognitive preference.
           </p>
         </div>
@@ -65,33 +87,38 @@ export default function OnboardingModal({ isOpen, onSave }: OnboardingModalProps
             return (
               <div
                 key={st.id}
-                onClick={() => setSelectedStyle(st.id)}
-                className={`p-5 rounded-[24px] cursor-pointer transition-all duration-300 border relative ${
+                onClick={() => setSelectedStyle(st.id as LearningStyleType)}
+                className={`p-5 rounded-[20px] cursor-pointer transition-all duration-150 border relative ${
                   isSelected
-                    ? "bg-slate-900/90 border-accent-cyan shadow-lg shadow-cyan-500/10 scale-[1.02]"
-                    : "bg-obsidian-950/60 border-slate-800 hover:border-slate-700 hover:bg-slate-900/40"
+                    ? "bg-white border-2 border-brand-primary shadow-elevation-md scale-[1.02]"
+                    : "bg-brand-surface-dim border-brand-outline-variant hover:border-brand-primary/40 hover:bg-white"
                 }`}
               >
                 {isSelected && (
-                  <div className="absolute top-4 right-4 w-6 h-6 rounded-full bg-accent-cyan flex items-center justify-center text-obsidian-950">
+                  <div className="absolute top-4 right-4 w-6 h-6 rounded-full bg-brand-primary flex items-center justify-center text-white">
                     <Check className="w-3.5 h-3.5 stroke-[3]" />
                   </div>
                 )}
                 <div className={`w-10 h-10 rounded-[14px] bg-gradient-to-br ${st.color} flex items-center justify-center text-white mb-3 shadow-md`}>
                   <Icon className="w-5 h-5" />
                 </div>
-                <h4 className="font-bold text-white text-base mb-1">{st.label}</h4>
-                <p className="text-xs text-slate-400 leading-relaxed">{st.description}</p>
+                <h4 className="font-bold text-brand-secondary text-base mb-1">{st.label}</h4>
+                <p className="text-xs text-brand-on-surface-variant leading-relaxed">{st.description}</p>
               </div>
             );
           })}
         </div>
 
         <button
-          onClick={() => onSave(selectedStyle)}
-          className="w-full py-4 rounded-full bg-accent-cyan text-obsidian-950 font-black text-base hover:brightness-110 shadow-lg shadow-cyan-500/25 transition-all duration-200 hover:scale-[1.01]"
+          onClick={handleConfirm}
+          disabled={saving}
+          className="w-full py-3.5 rounded-[14px] bg-brand-tertiary hover:bg-brand-tertiary-dim text-brand-secondary font-black text-base shadow-cta-glow transition-all duration-150 flex items-center justify-center gap-2 disabled:opacity-60"
         >
-          Confirm & Launch Cockpit
+          {saving ? (
+            <Loader2 className="w-5 h-5 animate-spin text-brand-secondary" />
+          ) : (
+            <span>Confirm & Launch Cockpit</span>
+          )}
         </button>
       </div>
     </div>

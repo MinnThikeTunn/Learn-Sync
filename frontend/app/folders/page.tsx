@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 import { 
   FolderTree, 
   Folder, 
@@ -12,27 +12,32 @@ import {
   Sparkles,
   Calendar,
   Layers,
-  ArrowRight
+  ArrowRight,
+  Plus
 } from "lucide-react";
 import Link from "next/link";
 import Navbar from "@/components/Navbar";
+import { useAuth } from "@/context/AuthContext";
 
 interface FolderItem {
   id: string;
   name: string;
   materialized_path: string;
   depth: number;
-  course_code: string;
-  document_count: number;
+  course_code?: string;
+  document_count?: number;
   children?: FolderItem[];
 }
 
 export default function VirtualFoldersPage() {
+  const { user } = useAuth();
   const [selectedFolder, setSelectedFolder] = useState<string>("/CS101/Week_03_Recursion");
   const [isUploading, setIsUploading] = useState(false);
   const [stagedPreview, setStagedPreview] = useState<any>(null);
+  const [folders, setFolders] = useState<FolderItem[]>([]);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const sampleFolders: FolderItem[] = [
+  const fallbackFolders: FolderItem[] = [
     {
       id: "root-cs101",
       name: "CS101",
@@ -65,14 +70,6 @@ export default function VirtualFoldersPage() {
           course_code: "CS101",
           document_count: 3,
         },
-        {
-          id: "cs101-w4",
-          name: "Week_04_Trees_and_Call_Stack",
-          materialized_path: "/CS101/Week_04_Trees_and_Call_Stack",
-          depth: 1,
-          course_code: "CS101",
-          document_count: 2,
-        },
       ],
     },
     {
@@ -103,141 +100,240 @@ export default function VirtualFoldersPage() {
     },
   ];
 
-  const handleSimulateSyllabusUpload = () => {
-    setIsUploading(true);
-    setTimeout(() => {
-      setIsUploading(false);
-      setStagedPreview({
-        course_code: "MATH204",
-        course_name: "Linear Algebra & Vector Spaces",
-        confidence: 0.94,
-        parser: "IBM Docling TableFormer",
-        extracted_modules: [
-          "Week_01_Matrices_and_Gaussian_Elimination",
-          "Week_02_Vector_Spaces_and_Subspaces",
-          "Week_03_Linear_Independence_and_Bases",
-          "Week_04_Eigenvalues_and_Diagonalization",
-        ],
-        extracted_events: [
-          { title: "Midterm Examination", date: "Oct 20, 2026", weight: "3.0x" },
-          { title: "Homework 1", date: "Sep 28, 2026", weight: "1.5x" },
-        ],
+  const fetchFoldersTree = async () => {
+    try {
+      const res = await fetch("http://localhost:8000/api/v1/folders/tree", {
+        headers: { "X-Test-User-Id": user?.id || "00000000-0000-0000-0000-000000000001" },
       });
-    }, 1500);
+      if (res.ok) {
+        const data = await res.json();
+        if (data && data.length > 0) {
+          // Group into hierarchical tree
+          const roots = data.filter((f: any) => f.depth === 0);
+          const tree = roots.map((root: any) => ({
+            ...root,
+            course_code: root.name,
+            document_count: 3,
+            children: data.filter((child: any) => child.depth > 0 && child.materialized_path.startsWith(root.materialized_path)),
+          }));
+          setFolders(tree.length > 0 ? tree : fallbackFolders);
+          return;
+        }
+      }
+    } catch (err) {
+      console.warn("Could not fetch folders tree:", err);
+    }
+    setFolders(fallbackFolders);
+  };
+
+  useEffect(() => {
+    fetchFoldersTree();
+  }, [user]);
+
+  const handleFileSelected = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setIsUploading(true);
+    try {
+      const formData = new FormData();
+      formData.append("file", file);
+      formData.append("course_id", "00000000-0000-0000-0000-000000000001");
+      formData.append("user_id", user?.id || "00000000-0000-0000-0000-000000000001");
+
+      const res = await fetch("http://localhost:8000/api/v1/syllabus/parse", {
+        method: "POST",
+        headers: {
+          "X-Test-User-Id": user?.id || "00000000-0000-0000-0000-000000000001",
+        },
+        body: formData,
+      });
+
+      if (res.ok) {
+        const data = await res.json();
+        setStagedPreview({
+          raw_data: data,
+          course_code: data.syllabus?.course_code || "CS101",
+          course_name: data.syllabus?.course_name || "Course Syllabus",
+          confidence: data.syllabus?.confidence_score || 0.88,
+          parser: data.syllabus?.parser_used || "Docling & Gemini Vision",
+          extracted_modules: data.suggested_folders?.map((f: any) => f.name) || [],
+          extracted_events: data.suggested_events || [],
+        });
+      }
+    } catch (err) {
+      console.error("Syllabus parsing failed:", err);
+    } finally {
+      setIsUploading(false);
+    }
+  };
+
+  const handleCommitSyllabus = async () => {
+    if (!stagedPreview || !stagedPreview.raw_data) return;
+    try {
+      await fetch("http://localhost:8000/api/v1/syllabus/commit?course_id=00000000-0000-0000-0000-000000000001", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "X-Test-User-Id": user?.id || "00000000-0000-0000-0000-000000000001",
+        },
+        body: JSON.stringify(stagedPreview.raw_data),
+      });
+      setStagedPreview(null);
+      fetchFoldersTree();
+    } catch (err) {
+      console.error("Commit syllabus error:", err);
+      setStagedPreview(null);
+    }
   };
 
   return (
-    <div className="min-h-screen flex flex-col bg-obsidian-950">
+    <div className="min-h-screen flex flex-col bg-[#f8f9fb]">
       <Navbar />
 
       <main className="flex-1 max-w-7xl w-full mx-auto px-6 py-8 space-y-8">
-        <div>
-          <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-slate-900 border border-slate-800 text-xs font-semibold text-accent-cyan mb-2">
-            <FolderTree className="w-3.5 h-3.5" />
-            <span>Virtual Folder Resource Manager</span>
+        {/* Header */}
+        <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-4">
+          <div>
+            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-brand-tertiary-container border border-brand-tertiary/40 text-xs font-bold text-brand-on-tertiary-container mb-2">
+              <FolderTree className="w-3.5 h-3.5 text-brand-secondary" />
+              <span>Hierarchical Resource Architecture</span>
+            </div>
+            <h1 className="text-4xl font-black text-brand-secondary tracking-tight">Virtual Folder Manager</h1>
+            <p className="text-brand-on-surface-variant text-sm mt-1">
+              Materialized course folders bound to academic weeks. RAG vector queries are strictly partitioned to eliminate cross-module context contamination.
+            </p>
           </div>
-          <h1 className="text-4xl font-black text-white tracking-tight">Virtual Folder Hierarchy</h1>
-          <p className="text-slate-400 text-sm mt-1">
-            Course materials are organized into materialized folder paths that scope hybrid RRF vector retrieval.
-          </p>
         </div>
 
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-          {/* Left: Materialized Folder Tree */}
-          <div className="glass-card p-6 lg:col-span-1 space-y-4">
-            <h3 className="text-base font-black text-white uppercase tracking-wider text-xs text-slate-400">Course Tree</h3>
+        {/* 2-Column Explorer */}
+        <div className="grid grid-cols-1 md:grid-cols-12 gap-8">
+          {/* Left Column: Interactive Folder Hierarchy Tree */}
+          <div className="md:col-span-5 bg-white border border-brand-outline-variant rounded-[32px] p-6 shadow-elevation-md space-y-4">
+            <div className="flex items-center justify-between border-b border-brand-outline-variant pb-3">
+              <span className="text-xs font-bold uppercase tracking-wider text-brand-on-surface-variant">
+                Course Virtual Folder Tree
+              </span>
+              <span className="text-xs font-mono text-brand-primary font-bold">
+                {folders.length} Registered Courses
+              </span>
+            </div>
 
             <div className="space-y-3">
-              {sampleFolders.map((courseFolder) => (
-                <div key={courseFolder.id} className="space-y-1">
-                  <div 
-                    onClick={() => setSelectedFolder(courseFolder.materialized_path)}
-                    className={`flex items-center justify-between p-2.5 rounded-[16px] cursor-pointer transition-colors ${
-                      selectedFolder === courseFolder.materialized_path ? "bg-slate-800 text-white font-bold" : "text-slate-300 hover:bg-slate-900"
-                    }`}
-                  >
+              {folders.map((course) => (
+                <div key={course.id} className="space-y-1.5">
+                  <div className="flex items-center justify-between p-2 rounded-xl bg-brand-surface-dim border border-brand-outline-variant font-bold text-xs text-brand-secondary">
                     <div className="flex items-center gap-2">
-                      <Folder className="w-4 h-4 text-accent-cyan" />
-                      <span className="text-sm font-black">{courseFolder.name}</span>
+                      <Folder className="w-4 h-4 text-brand-primary" />
+                      <span>{course.name}</span>
                     </div>
-                    <span className="text-xs font-mono text-slate-500">{courseFolder.document_count} files</span>
+                    <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-white border border-brand-outline-variant text-brand-on-surface-variant">
+                      {course.children?.length || 0} modules
+                    </span>
                   </div>
 
-                  <div className="pl-5 space-y-1 border-l border-slate-800 ml-3">
-                    {courseFolder.children?.map((child) => (
-                      <div
-                        key={child.id}
-                        onClick={() => setSelectedFolder(child.materialized_path)}
-                        className={`flex items-center justify-between p-2 rounded-[14px] cursor-pointer text-xs transition-colors ${
-                          selectedFolder === child.materialized_path
-                            ? "bg-accent-cyan/10 border border-accent-cyan/30 text-accent-cyan font-bold"
-                            : "text-slate-400 hover:text-slate-200 hover:bg-slate-900/60"
-                        }`}
-                      >
-                        <span className="truncate max-w-[200px]">{child.name.replace(/_/g, " ")}</span>
-                        <ChevronRight className="w-3.5 h-3.5 opacity-60 flex-shrink-0" />
-                      </div>
-                    ))}
+                  {/* Subfolders */}
+                  <div className="pl-4 space-y-1 border-l-2 border-brand-outline-variant/60 ml-3">
+                    {course.children?.map((sub) => {
+                      const isSelected = selectedFolder === sub.materialized_path;
+                      return (
+                        <button
+                          key={sub.id}
+                          onClick={() => setSelectedFolder(sub.materialized_path)}
+                          className={`w-full flex items-center justify-between p-2 rounded-xl text-xs font-mono transition-all text-left ${
+                            isSelected
+                              ? "bg-brand-primary text-white font-bold shadow-sm"
+                              : "text-brand-on-surface-variant hover:bg-brand-surface-dim hover:text-brand-secondary"
+                          }`}
+                        >
+                          <div className="flex items-center gap-2 truncate">
+                            <ChevronRight className={`w-3 h-3 ${isSelected ? "text-white" : "text-brand-on-surface-variant"}`} />
+                            <span className="truncate">{sub.name.replace(/_/g, " ")}</span>
+                          </div>
+                          <span className={`text-[10px] px-1.5 py-0.5 rounded ${isSelected ? "bg-white/20 text-white" : "bg-brand-surface-dim text-brand-on-surface-variant"}`}>
+                            {sub.document_count || 1} docs
+                          </span>
+                        </button>
+                      );
+                    })}
                   </div>
                 </div>
               ))}
             </div>
           </div>
 
-          {/* Center & Right: Folder Contents & Syllabus PDF Ingestion */}
-          <div className="lg:col-span-2 space-y-6">
-            {/* Active Folder Header Card */}
-            <div className="glass-card p-6 flex items-center justify-between">
-              <div>
-                <span className="text-xs font-bold uppercase tracking-wider text-slate-400">Active Materialized Scope</span>
-                <h2 className="text-2xl font-black text-white font-mono mt-0.5">{selectedFolder}</h2>
+          {/* Right Column: Selected Folder Inspector & Syllabus Ingestion */}
+          <div className="md:col-span-7 space-y-6">
+            {/* Active Folder Inspector Card */}
+            <div className="bg-white border border-brand-outline-variant rounded-[32px] p-6 shadow-elevation-md space-y-4">
+              <div className="flex items-center justify-between border-b border-brand-outline-variant pb-3">
+                <div>
+                  <span className="text-xs text-brand-on-surface-variant font-mono">Active Partition Scope</span>
+                  <h3 className="text-xl font-black text-brand-secondary">{selectedFolder}</h3>
+                </div>
+                <Link
+                  href={`/study?folder=${encodeURIComponent(selectedFolder)}&topic=${encodeURIComponent(selectedFolder.split("/").pop() || "Recursion")}`}
+                  className="px-4 py-2 rounded-xl bg-brand-primary hover:bg-brand-primary/90 text-white text-xs font-bold transition-all shadow-sm flex items-center gap-1.5"
+                >
+                  <Sparkles className="w-3.5 h-3.5" />
+                  <span>Synthesize Grounded Artifact</span>
+                </Link>
               </div>
-              <Link
-                href={`/study?folder=${encodeURIComponent(selectedFolder)}&topic=${encodeURIComponent(selectedFolder.split("/").pop() || "Topic")}`}
-                className="px-4 py-2 rounded-full bg-accent-cyan text-obsidian-950 font-bold text-xs hover:brightness-110 shadow-md shadow-cyan-500/20 flex items-center gap-1.5 transition-all"
-              >
-                <Sparkles className="w-3.5 h-3.5" />
-                <span>Synthesize Artifacts</span>
-              </Link>
+
+              <div className="text-xs text-brand-on-surface-variant space-y-2">
+                <p>
+                  Documents placed in this virtual folder are automatically chunked into 500-token blocks with 1536-dimensional HNSW indexed vectors.
+                </p>
+                <div className="p-3 rounded-2xl bg-brand-surface-dim border border-brand-outline-variant font-mono text-[11px]">
+                  match_folder_chunks(query_embedding, query_text, p_folder_id, p_user_id)
+                </div>
+              </div>
             </div>
 
-            {/* Docling Syllabus PDF Uploader Dropzone */}
-            <div className="glass-card p-8 border-2 border-dashed border-slate-800 hover:border-slate-700 transition-colors text-center relative">
+            {/* Syllabus Ingestion Dropzone */}
+            <div className="bg-white border-2 border-dashed border-brand-outline-variant hover:border-brand-primary/50 shadow-elevation-sm transition-colors rounded-[32px] p-8 text-center relative">
+              <input
+                type="file"
+                ref={fileInputRef}
+                onChange={handleFileSelected}
+                accept=".pdf,.txt"
+                className="hidden"
+              />
               <div className="max-w-md mx-auto space-y-3">
-                <div className="w-12 h-12 rounded-[18px] bg-accent-cyan/10 border border-accent-cyan/20 flex items-center justify-center text-accent-cyan mx-auto">
+                <div className="w-12 h-12 rounded-[16px] bg-brand-primary/10 border border-brand-primary/20 flex items-center justify-center text-brand-primary mx-auto">
                   <UploadCloud className="w-6 h-6" />
                 </div>
-                <h3 className="text-lg font-black text-white">Ingest Course Syllabus PDF</h3>
-                <p className="text-xs text-slate-400 leading-relaxed">
-                  Upload your syllabus PDF. IBM Docling TableFormer will extract weekly modules, exam schedules, and grading weights to auto-create virtual folders.
+                <h3 className="text-lg font-black text-brand-secondary">Ingest Course Syllabus PDF</h3>
+                <p className="text-xs text-brand-on-surface-variant leading-relaxed">
+                  Upload your course syllabus PDF. IBM Docling TableFormer and Gemini 3 Flash structured vision will extract weekly modules, exam schedules, and grading weights to auto-create virtual folders.
                 </p>
 
                 <button
-                  onClick={handleSimulateSyllabusUpload}
+                  onClick={() => fileInputRef.current?.click()}
                   disabled={isUploading}
-                  className="px-6 py-2.5 rounded-full bg-slate-900 hover:bg-slate-800 border border-slate-700 text-slate-200 text-xs font-bold transition-all"
+                  className="px-6 py-2.5 rounded-full bg-brand-secondary hover:bg-brand-secondary-container text-white text-xs font-bold transition-all shadow-sm disabled:opacity-50"
                 >
-                  {isUploading ? "Docling Parsing Syllabus..." : "Select Syllabus PDF File"}
+                  {isUploading ? "Parsing Syllabus with Docling & Gemini..." : "Select Syllabus PDF File"}
                 </button>
               </div>
             </div>
 
-            {/* Staged Syllabus Preview (Appears after parsing) */}
+            {/* Staged Syllabus Preview Modal */}
             {stagedPreview && (
-              <div className="glass-card p-6 border border-emerald-500/30 bg-emerald-950/10 space-y-4 animate-in fade-in duration-300">
-                <div className="flex items-center justify-between border-b border-slate-800/80 pb-3">
+              <div className="bg-emerald-50/90 border border-emerald-300 shadow-elevation-md rounded-[32px] p-6 space-y-4 animate-fadeIn">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-emerald-200 pb-3">
                   <div className="flex items-center gap-2">
-                    <CheckCircle2 className="w-5 h-5 text-emerald-400" />
+                    <CheckCircle2 className="w-5 h-5 text-emerald-600 flex-shrink-0" />
                     <div>
-                      <h4 className="text-base font-black text-white">Syllabus Parsed Successfully</h4>
-                      <p className="text-xs text-slate-400">
-                        {stagedPreview.course_code} - {stagedPreview.course_name} ({stagedPreview.parser}, Confidence {(stagedPreview.confidence * 100).toFixed(0)}%)
+                      <h4 className="text-base font-black text-emerald-950">Syllabus Parsed Successfully</h4>
+                      <p className="text-xs text-emerald-800">
+                        {stagedPreview.course_code} ({stagedPreview.parser}, Confidence {(stagedPreview.confidence * 100).toFixed(0)}%)
                       </p>
                     </div>
                   </div>
                   <button
-                    onClick={() => setStagedPreview(null)}
-                    className="px-4 py-1.5 rounded-full bg-emerald-500 text-obsidian-950 font-bold text-xs hover:brightness-110"
+                    onClick={handleCommitSyllabus}
+                    className="px-5 py-2 rounded-full bg-brand-secondary hover:bg-brand-secondary-container text-white font-bold text-xs shadow-sm transition-all"
                   >
                     Confirm & Materialize Folders
                   </button>
@@ -245,11 +341,11 @@ export default function VirtualFoldersPage() {
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-xs">
                   <div>
-                    <span className="font-bold text-slate-300 block mb-2">Generated Virtual Folders:</span>
-                    <ul className="space-y-1 font-mono text-slate-400">
+                    <span className="font-bold text-emerald-950 block mb-2">Generated Virtual Folders:</span>
+                    <ul className="space-y-1 font-mono text-emerald-900">
                       {stagedPreview.extracted_modules.map((m: string, i: number) => (
                         <li key={i} className="flex items-center gap-1.5 truncate">
-                          <Folder className="w-3.5 h-3.5 text-accent-cyan" />
+                          <Folder className="w-3.5 h-3.5 text-brand-primary" />
                           <span>/{stagedPreview.course_code}/{m}</span>
                         </li>
                       ))}
@@ -257,12 +353,12 @@ export default function VirtualFoldersPage() {
                   </div>
 
                   <div>
-                    <span className="font-bold text-slate-300 block mb-2">Detected Deadlines & Exams:</span>
-                    <ul className="space-y-1 text-slate-300">
+                    <span className="font-bold text-emerald-950 block mb-2">Detected Deadlines & Exams:</span>
+                    <ul className="space-y-1 text-emerald-950">
                       {stagedPreview.extracted_events.map((e: any, i: number) => (
-                        <li key={i} className="flex items-center justify-between p-1.5 rounded bg-slate-900/60 border border-slate-800">
-                          <span>{e.title}</span>
-                          <span className="font-mono text-amber-400">{e.date}</span>
+                        <li key={i} className="flex items-center justify-between p-2 rounded-xl bg-white border border-emerald-200">
+                          <span className="font-medium">{e.title}</span>
+                          <span className="font-mono font-bold text-amber-700">weight: {e.weight || 1.0}</span>
                         </li>
                       ))}
                     </ul>

@@ -5,6 +5,47 @@
 **Status:** ⏳ Pending Specialist Review on Recent File Edits
 
 ## Outstanding File Edits Pending Judgment
+- `C:\Users\USER\.gemini\antigravity-ide\brain\7aeb9df0-db59-48bc-bae1-633a93e4423d\walkthrough.md`
+- `frontend\components\ManualEventModal.tsx`
+- `frontend\components\AudioRecapPlayer.tsx`
+- `frontend\components\CodeSandbox.tsx`
+- `frontend\components\MermaidRenderer.tsx`
+- `backend\tests\test_extended_api.py`
+- `backend\tests\test_workload_live.py`
+- `backend\app\services\calendar_sync.py`
+- `backend\tests\test_google_sync.py`
+- `backend\app\services\database.py`
+- `backend\tests\test_database_service.py`
+- `backend\app\services\llm.py`
+- `backend\tests\test_llm_service.py`
+- `C:\Users\USER\.gemini\antigravity-ide\brain\7aeb9df0-db59-48bc-bae1-633a93e4423d\implementation_plan.md`
+- `supabase\seed.sql`
+- `C:\Users\USER\.gemini\config\mcp_config.json`
+- `C:\Users\USER\.gemini\antigravity-ide\brain\9bc1d62d-ddea-4523-bb5e-f4ccfa4bfce5\walkthrough.md`
+- `frontend\lib\authFeedback.ts`
+- `frontend\lib\authFeedback.test.ts`
+- `C:\Users\USER\.gemini\antigravity-ide\brain\9bc1d62d-ddea-4523-bb5e-f4ccfa4bfce5\implementation_plan.md`
+- `frontend\.env.example`
+- `backend\.env`
+- `frontend\.env.local`
+- `C:\Users\USER\.gemini\antigravity-ide\brain\aa062a36-d01f-449b-aa57-4023e13c858e\walkthrough.md`
+- `frontend\app\reset-password\page.tsx`
+- `frontend\app\login\page.tsx`
+- `frontend\app\auth\callback\route.ts`
+- `frontend\context\AuthContext.tsx`
+- `frontend\middleware.ts`
+- `frontend\lib\supabase\middleware.ts`
+- `frontend\lib\supabase\server.ts`
+- `frontend\lib\supabase\client.ts`
+- `backend\app\core\auth.py`
+- `backend\tests\test_auth.py`
+- `C:\Users\USER\.gemini\antigravity-ide\brain\aa062a36-d01f-449b-aa57-4023e13c858e\implementation_plan.md`
+- `docs\adr\0001-supabase-ssr-fastapi-jwt-auth.md`
+- `C:\Users\USER\.gemini\antigravity-cli\mcp_config.json`
+- `C:\Users\USER\.gemini\antigravity\mcp_config.json`
+- `C:\Users\USER\.gemini\antigravity-cli\brain\31e2f0e9-e806-4a2e-ac82-f67e80f737a8\scratch\blog_post_feature_roadmap.txt`
+- `C:\Users\USER\.gemini\antigravity-cli\brain\31e2f0e9-e806-4a2e-ac82-f67e80f737a8\walkthrough.md`
+- `C:\Users\USER\.gemini\antigravity-cli\brain\31e2f0e9-e806-4a2e-ac82-f67e80f737a8\ui_design_update_plan.md`
 - `README.md`
 - `frontend\app\review\page.tsx`
 - `frontend\app\study\page.tsx`

@@ -4,19 +4,45 @@
 
 @layer base {
   body {
-    @apply bg-obsidian-950 text-slate-100 antialiased selection:bg-accent-cyan/20 selection:text-accent-cyan;
+    @apply bg-[#f8f9fb] text-brand-secondary antialiased selection:bg-brand-primary/20 selection:text-brand-primary;
     font-feature-settings: "cv02", "cv03", "cv04", "cv11";
   }
 }
 
+.design-card {
+  @apply bg-white border border-brand-outline-variant shadow-elevation-md rounded-[24px];
+}
+
+.design-card-interactive {
+  @apply bg-white border border-brand-outline-variant shadow-elevation-md hover:border-brand-primary/40 hover:shadow-card-hover transition-all duration-200 rounded-[24px];
+}
+
+/* Backward-compatible classes for seamless component integration */
 .glass-card {
-  @apply bg-obsidian-900/70 backdrop-blur-xl border border-slate-800/60 shadow-2xl rounded-[32px];
+  @apply bg-white border border-brand-outline-variant shadow-elevation-md rounded-[32px];
 }
 
 .glass-card-interactive {
-  @apply glass-card hover:border-slate-700/80 transition-all duration-300 hover:shadow-cyan-500/5;
+  @apply bg-white border border-brand-outline-variant shadow-elevation-md hover:border-brand-primary/50 hover:shadow-card-hover transition-all duration-200 rounded-[24px];
+}
+
+.btn-primary {
+  @apply bg-brand-tertiary hover:bg-brand-tertiary-dim text-brand-on-tertiary font-bold text-sm px-4 py-2 rounded-md transition-all duration-150 ease-in-out inline-flex items-center justify-center gap-2 shadow-sm;
+}
+
+.btn-secondary {
+  @apply bg-brand-secondary hover:bg-brand-secondary-container text-white font-bold text-sm px-4 py-2 rounded-md transition-all duration-150 ease-in-out inline-flex items-center justify-center gap-2 shadow-sm;
+}
+
+.btn-ghost {
+  @apply bg-transparent hover:bg-brand-primary/10 text-brand-primary border border-brand-primary font-bold text-sm px-4 py-2 rounded-md transition-all duration-150 ease-in-out inline-flex items-center justify-center gap-2;
 }
 
 .badge-pill {
   @apply px-3 py-1 rounded-full text-xs font-semibold uppercase tracking-wider inline-flex items-center gap-1.5;
 }
+
+.badge-brand {
+  @apply bg-brand-tertiary-container text-brand-on-tertiary-container border border-brand-tertiary/30 px-3 py-1 rounded-full text-xs font-bold inline-flex items-center gap-1.5;
+}
+

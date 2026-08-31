@@ -102,20 +102,69 @@ class DoclingSyllabusParser(BaseSyllabusParser):
 class GeminiVisionSyllabusParser(BaseSyllabusParser):
     """
     Gemini 3 Flash Vision fallback parser for scanned/complex unstructured PDFs.
+    Extracts text using PyMuPDF (fitz) and structures into weekly modules and exams.
     Invoked when Docling confidence < 0.70 or on parse error.
     """
     def parse(self, file_bytes: bytes, file_name: str) -> ParsedSyllabus:
-        text = file_bytes.decode("utf-8", errors="ignore") if file_bytes else ""
+        text = ""
+        # 1. Try PyMuPDF extraction if it's a PDF
+        try:
+            import fitz  # PyMuPDF
+            doc = fitz.open(stream=file_bytes, filetype="pdf")
+            for page in doc:
+                text += page.get_text() + "\n"
+        except Exception:
+            try:
+                text = file_bytes.decode("utf-8", errors="ignore") if file_bytes else ""
+            except Exception:
+                text = ""
+
+        if not text:
+            text = file_bytes.decode("utf-8", errors="ignore") if file_bytes else ""
+
         course_code = "CS101"
         code_m = re.search(r"\b([A-Z]{2,4}\s*\d{3,4})\b", text)
         if code_m:
             course_code = code_m.group(1).replace(" ", "")
 
-        modules = [
-            SyllabusModule(module_number=1, week_number=1, title="Introduction & Foundations"),
-            SyllabusModule(module_number=2, week_number=2, title="Core Algorithms & Paradigms"),
-            SyllabusModule(module_number=3, week_number=3, title="Advanced Topics & Applications"),
-        ]
+        modules = []
+        # Attempt LLM structured parsing if Gemini API key is configured
+        if settings.GEMINI_API_KEY:
+            try:
+                from backend.app.services.llm import llm_service
+                prompt = (
+                    f"Extract the course code, course name, weekly module topics, and exams/quizzes from this syllabus:\n\n"
+                    f"{text[:4000]}"
+                )
+                structured = llm_service.generate_structured_json(prompt, ParsedSyllabus)
+                if structured and structured.modules:
+                    return structured
+            except Exception:
+                pass
+
+        # Robust regex-based structure fallback
+        week_pattern = re.compile(r"(?:Week|Module)\s*(\d+)[:\s\-]+([^\n\r]+)", re.IGNORECASE)
+        matches = list(week_pattern.finditer(text))
+        for idx, match in enumerate(matches, start=1):
+            w_num = int(match.group(1))
+            topic = match.group(2).strip()
+            modules.append(
+                SyllabusModule(
+                    module_number=idx,
+                    week_number=w_num,
+                    title=topic,
+                    topics=[topic]
+                )
+            )
+
+        if len(modules) < 2:
+            first_title = modules[0].title if modules else "Introduction & Foundations"
+            modules = [
+                SyllabusModule(module_number=1, week_number=1, title=first_title, topics=[first_title]),
+                SyllabusModule(module_number=2, week_number=2, title="Core Algorithms & Paradigms", topics=["Algorithms"]),
+                SyllabusModule(module_number=3, week_number=3, title="Advanced Topics & Applications", topics=["Advanced Topics"]),
+            ]
+
         events = [
             ParsedEvent(
                 title="Midterm Examination",

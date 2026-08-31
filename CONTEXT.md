@@ -43,3 +43,11 @@ _Avoid_: Hybrid search, blended search
 **Federated Edge Aggregation**:
 An on-device model optimization framework employing local gradient descent and Differential Privacy before central parameter aggregation.
 _Avoid_: Distributed ML, edge cloud sync, client upload
+
+**Student Profile**:
+A domain entity extending auth credentials with cognitive learning style, target retention, and onboarding status.
+_Avoid_: User account, user settings, profile data
+
+**Onboarding Gate**:
+A prerequisite setup state in the client that blocks access to the Cockpit until learning style and target retention are configured.
+_Avoid_: Setup wizard, signup form, intro flow

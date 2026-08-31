@@ -1,0 +1,14 @@
+FUTURE FEATURE ROADMAP: MULTIMODAL BLOG POST ENGINE WITH TRIVIA API
+
+1. Overview:
+We will add a dedicated educational Blog Post section in LearnSync AI customized for every learner type, integrating external Trivia API challenges for active recall and self-assessment.
+
+2. Learner Types Customization:
+- Visual Learners: In-depth visual infographics, embedded Mermaid flowcharts, concept architecture maps, and diagram-based trivia questions.
+- Auditory Learners: Conversational Socratic dialogue transcripts, embedded audio recaps, and auditory trivia quizzes.
+- Read/Write Learners: Structured markdown articles, bulleted 80/20 Pareto summaries, and textual trivia exercises with detailed rationales.
+- Kinesthetic Learners: Hands-on code labs, runnable interactive sandboxes, and code snippet puzzle trivia.
+
+3. Trivia API Integration:
+- Uses the Trivia API (e.g. Open Trivia Database / custom endpoints) to fetch dynamically categorized trivia matching virtual course folders (e.g., Computer Science, Mathematics).
+- Scales question difficulty dynamically based on current cognitive workload (Free Mode vs. Busy Mode).

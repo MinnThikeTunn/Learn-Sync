@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import "./globals.css";
+import { AuthProvider } from "../context/AuthContext";
 
 export const metadata: Metadata = {
   title: "LearnSync AI | Context-Aware Adaptive Co-Pilot",
@@ -12,9 +13,11 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="en" className="dark">
-      <body className="min-h-screen bg-obsidian-950 font-sans text-slate-100 flex flex-col">
-        {children}
+    <html lang="en">
+      <body className="min-h-screen bg-[#f8f9fb] font-sans text-brand-secondary flex flex-col antialiased">
+        <AuthProvider>
+          {children}
+        </AuthProvider>
       </body>
     </html>
   );

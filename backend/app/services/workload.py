@@ -151,3 +151,57 @@ class WorkloadEngine:
             )
 
         return response, spike_event
+
+    @classmethod
+    def evaluate_user_workload(
+        cls,
+        user_id: UUID,
+        previous_mode: Optional[WorkloadMode] = None,
+        days_ahead: int = 3,
+    ) -> WorkloadScoreResponse:
+        """
+        Evaluates real-time workload for a student by querying their upcoming events
+        from the database, computing W(t), evaluating Schmitt hysteresis, and recording the log.
+        """
+        from backend.app.services.database import db_service
+        from backend.app.schemas.workload import EventType
+
+        raw_events = db_service.get_upcoming_events(user_id=user_id, days_ahead=days_ahead)
+        event_items: List[EventItem] = []
+        for re in raw_events:
+            try:
+                st = datetime.fromisoformat(re["start_time"]) if isinstance(re["start_time"], str) else re["start_time"]
+                etype = EventType(re.get("event_type", "assignment"))
+                event_items.append(
+                    EventItem(
+                        id=UUID(re["id"]) if isinstance(re.get("id"), str) else re.get("id"),
+                        user_id=user_id,
+                        title=re.get("title", "Academic Event"),
+                        event_type=etype,
+                        start_time=st,
+                        weight=re.get("weight"),
+                        is_completed=re.get("is_completed", False),
+                    )
+                )
+            except Exception:
+                continue
+
+        req = WorkloadCalculationRequest(
+            user_id=user_id,
+            events=event_items,
+            lookahead_days=float(days_ahead),
+            previous_mode=previous_mode,
+        )
+
+        response, spike = cls.evaluate(req)
+
+        # Persist workload log to Supabase
+        db_service.record_workload_log(
+            user_id=user_id,
+            score=response.score,
+            mode=response.current_mode.value,
+            lookahead_days=days_ahead,
+            active_event_count=response.active_event_count,
+        )
+
+        return response

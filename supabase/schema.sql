@@ -190,14 +190,31 @@ CREATE INDEX IF NOT EXISTS idx_document_chunks_content_trgm
 ON public.document_chunks
 USING gin (content gin_trgm_ops);
 
--- Supporting B-Tree Indexes
+-- Supporting Foreign Key & Query B-Tree Indexes
+CREATE INDEX IF NOT EXISTS idx_courses_user ON public.courses(user_id);
+CREATE INDEX IF NOT EXISTS idx_virtual_folders_user ON public.virtual_folders(user_id);
 CREATE INDEX IF NOT EXISTS idx_virtual_folders_course ON public.virtual_folders(course_id);
 CREATE INDEX IF NOT EXISTS idx_virtual_folders_parent ON public.virtual_folders(parent_id);
+CREATE INDEX IF NOT EXISTS idx_documents_user ON public.documents(user_id);
+CREATE INDEX IF NOT EXISTS idx_documents_course ON public.documents(course_id);
+CREATE INDEX IF NOT EXISTS idx_documents_folder ON public.documents(folder_id);
+CREATE INDEX IF NOT EXISTS idx_document_chunks_document ON public.document_chunks(document_id);
 CREATE INDEX IF NOT EXISTS idx_document_chunks_folder ON public.document_chunks(folder_id);
 CREATE INDEX IF NOT EXISTS idx_document_chunks_user ON public.document_chunks(user_id);
+CREATE INDEX IF NOT EXISTS idx_events_user ON public.events(user_id);
+CREATE INDEX IF NOT EXISTS idx_events_course ON public.events(course_id);
 CREATE INDEX IF NOT EXISTS idx_events_user_time ON public.events(user_id, start_time);
+CREATE INDEX IF NOT EXISTS idx_workload_logs_user ON public.workload_logs(user_id);
+CREATE INDEX IF NOT EXISTS idx_knowledge_components_user ON public.knowledge_components(user_id);
+CREATE INDEX IF NOT EXISTS idx_knowledge_components_course ON public.knowledge_components(course_id);
+CREATE INDEX IF NOT EXISTS idx_knowledge_components_folder ON public.knowledge_components(folder_id);
+CREATE INDEX IF NOT EXISTS idx_student_kc_mastery_kc ON public.student_kc_mastery(kc_id);
 CREATE INDEX IF NOT EXISTS idx_flashcards_user_due ON public.flashcards(user_id, due);
 CREATE INDEX IF NOT EXISTS idx_flashcards_folder ON public.flashcards(folder_id);
+CREATE INDEX IF NOT EXISTS idx_flashcards_kc ON public.flashcards(kc_id);
+CREATE INDEX IF NOT EXISTS idx_review_logs_user ON public.review_logs(user_id);
+CREATE INDEX IF NOT EXISTS idx_review_logs_flashcard ON public.review_logs(flashcard_id);
+CREATE INDEX IF NOT EXISTS idx_burnout_triggers_user ON public.burnout_triggers(user_id);
 
 -- =====================================================================
 -- 4. Row Level Security (RLS) Policies
@@ -216,7 +233,7 @@ ALTER TABLE public.flashcards ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.review_logs ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.burnout_triggers ENABLE ROW LEVEL SECURITY;
 
--- Helper macro for standard user_id RLS policies
+-- Helper macro for standard user_id RLS policies (using (select auth.uid()) for InitPlan optimization)
 DO $$
 DECLARE
     t text;
@@ -229,25 +246,63 @@ BEGIN
         ])
     LOOP
         EXECUTE format('
-            CREATE POLICY "Users can view their own %1$I" 
-            ON public.%1$I FOR SELECT USING (auth.uid() = user_id);
+            DROP POLICY IF EXISTS "Users can view their own %1$s" ON public.%1$I;
+            CREATE POLICY "Users can view their own %1$s" 
+            ON public.%1$I FOR SELECT USING ((select auth.uid()) = user_id);
             
-            CREATE POLICY "Users can insert their own %1$I" 
-            ON public.%1$I FOR INSERT WITH CHECK (auth.uid() = user_id);
+            DROP POLICY IF EXISTS "Users can insert their own %1$s" ON public.%1$I;
+            CREATE POLICY "Users can insert their own %1$s" 
+            ON public.%1$I FOR INSERT WITH CHECK ((select auth.uid()) = user_id);
             
-            CREATE POLICY "Users can update their own %1$I" 
-            ON public.%1$I FOR UPDATE USING (auth.uid() = user_id) WITH CHECK (auth.uid() = user_id);
+            DROP POLICY IF EXISTS "Users can update their own %1$s" ON public.%1$I;
+            CREATE POLICY "Users can update their own %1$s" 
+            ON public.%1$I FOR UPDATE USING ((select auth.uid()) = user_id) WITH CHECK ((select auth.uid()) = user_id);
             
-            CREATE POLICY "Users can delete their own %1$I" 
-            ON public.%1$I FOR DELETE USING (auth.uid() = user_id);
+            DROP POLICY IF EXISTS "Users can delete their own %1$s" ON public.%1$I;
+            CREATE POLICY "Users can delete their own %1$s" 
+            ON public.%1$I FOR DELETE USING ((select auth.uid()) = user_id);
         ', t);
     END LOOP;
 END $$;
 
--- Profile RLS (id = auth.uid())
-CREATE POLICY "Users can view own profile" ON public.profiles FOR SELECT USING (auth.uid() = id);
-CREATE POLICY "Users can insert own profile" ON public.profiles FOR INSERT WITH CHECK (auth.uid() = id);
-CREATE POLICY "Users can update own profile" ON public.profiles FOR UPDATE USING (auth.uid() = id) WITH CHECK (auth.uid() = id);
+-- Profile RLS (id = (select auth.uid()))
+DROP POLICY IF EXISTS "Users can view own profile" ON public.profiles;
+CREATE POLICY "Users can view own profile" ON public.profiles FOR SELECT USING ((select auth.uid()) = id);
+
+DROP POLICY IF EXISTS "Users can insert own profile" ON public.profiles;
+CREATE POLICY "Users can insert own profile" ON public.profiles FOR INSERT WITH CHECK ((select auth.uid()) = id);
+
+DROP POLICY IF EXISTS "Users can update own profile" ON public.profiles;
+CREATE POLICY "Users can update own profile" ON public.profiles FOR UPDATE USING ((select auth.uid()) = id) WITH CHECK ((select auth.uid()) = id);
+
+-- 4.1 Automatic Profile Provisioning Trigger on auth.users
+CREATE OR REPLACE FUNCTION public.handle_new_user()
+RETURNS trigger
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public, auth
+AS $$
+BEGIN
+    INSERT INTO public.profiles (id, email, full_name, learning_style, target_retention, onboarding_completed)
+    VALUES (
+        NEW.id,
+        NEW.email,
+        COALESCE(NEW.raw_user_meta_data->>'full_name', NEW.raw_user_meta_data->>'name', split_part(NEW.email, '@', 1)),
+        'read_write',
+        0.90,
+        FALSE
+    )
+    ON CONFLICT (id) DO NOTHING;
+    RETURN NEW;
+END;
+$$;
+
+REVOKE EXECUTE ON FUNCTION public.handle_new_user() FROM PUBLIC, anon, authenticated;
+
+DROP TRIGGER IF EXISTS on_auth_user_created ON auth.users;
+CREATE TRIGGER on_auth_user_created
+    AFTER INSERT ON auth.users
+    FOR EACH ROW EXECUTE FUNCTION public.handle_new_user();
 
 -- =====================================================================
 -- 5. Stored Procedure: Folder-Scoped Reciprocal Rank Fusion (RRF)
@@ -271,7 +326,7 @@ RETURNS TABLE (
     rrf_score REAL
 )
 LANGUAGE plpgsql
-SECURITY DEFINER
+SECURITY INVOKER
 SET search_path = public, extensions
 AS $$
 BEGIN
@@ -293,6 +348,9 @@ BEGIN
     sparse_search AS (
         SELECT 
             dc.id,
+            dc.document_id,
+            dc.folder_id,
+            dc.content,
             similarity(dc.content, query_text)::REAL AS sparse_sim,
             ROW_NUMBER() OVER (ORDER BY similarity(dc.content, query_text) DESC) AS sparse_rank
         FROM public.document_chunks dc
@@ -317,3 +375,7 @@ BEGIN
     LIMIT match_count;
 END;
 $$;
+
+REVOKE EXECUTE ON FUNCTION public.match_folder_chunks(VECTOR(1536), TEXT, UUID, UUID, INTEGER, INTEGER) FROM anon;
+GRANT EXECUTE ON FUNCTION public.match_folder_chunks(VECTOR(1536), TEXT, UUID, UUID, INTEGER, INTEGER) TO authenticated;
+

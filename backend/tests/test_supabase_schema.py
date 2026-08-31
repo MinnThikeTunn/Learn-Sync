@@ -62,8 +62,8 @@ def test_schema_rls_enabled_and_policies():
     for table in tables:
         assert f"ALTER TABLE public.{table} ENABLE ROW LEVEL SECURITY;" in content
 
-    assert "auth.uid() = user_id" in content
-    assert "auth.uid() = id" in content  # For profiles
+    assert "auth.uid() = user_id" in content or "(select auth.uid()) = user_id" in content
+    assert "auth.uid() = id" in content or "(select auth.uid()) = id" in content  # For profiles
 
 
 def test_schema_match_folder_chunks_rpc_defined():

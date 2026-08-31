@@ -49,12 +49,12 @@ export default function BurnoutGuardModal({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-obsidian-950/80 backdrop-blur-md animate-in fade-in duration-200">
-      <div className="glass-card max-w-xl w-full p-8 border border-amber-500/40 shadow-2xl shadow-amber-500/10 relative">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-brand-secondary/40 backdrop-blur-md animate-in fade-in duration-200">
+      <div className="bg-white max-w-xl w-full p-8 border border-brand-outline-variant shadow-elevation-lg rounded-[32px] relative">
         {/* Close Button */}
         <button
           onClick={onClose}
-          className="absolute top-6 right-6 p-2 rounded-full text-slate-400 hover:text-white hover:bg-slate-800/60 transition-colors"
+          className="absolute top-6 right-6 p-2 rounded-full text-brand-on-surface-variant hover:text-brand-secondary hover:bg-brand-surface-dim transition-colors"
         >
           <X className="w-5 h-5" />
         </button>
@@ -62,23 +62,23 @@ export default function BurnoutGuardModal({
         {/* Header with Icon & Timer */}
         <div className="flex items-center justify-between mb-6">
           <div className="flex items-center gap-3">
-            <div className="w-12 h-12 rounded-[18px] bg-amber-500/20 border border-amber-500/40 flex items-center justify-center text-amber-400">
-              <ShieldAlert className="w-6 h-6" />
+            <div className="w-12 h-12 rounded-[18px] bg-brand-tertiary-container border border-brand-tertiary/40 flex items-center justify-center text-brand-on-tertiary-container">
+              <ShieldAlert className="w-6 h-6 text-brand-secondary" />
             </div>
             <div>
-              <span className="text-xs font-bold uppercase tracking-wider text-amber-400">Burnout Guard Active</span>
-              <h3 className="text-xl font-black text-white">{title}</h3>
+              <span className="text-xs font-bold uppercase tracking-wider text-amber-700">Burnout Guard Active</span>
+              <h3 className="text-xl font-black text-brand-secondary">{title}</h3>
             </div>
           </div>
 
-          <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-slate-900 border border-slate-800 text-amber-300 font-mono text-sm font-bold">
-            <Clock className="w-4 h-4" />
+          <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-brand-surface-dim border border-brand-outline-variant text-brand-secondary font-mono text-sm font-bold">
+            <Clock className="w-4 h-4 text-amber-600" />
             <span>{secondsRemaining}s</span>
           </div>
         </div>
 
         {/* Prompt Body */}
-        <div className="p-4 rounded-[20px] bg-obsidian-950/80 border border-slate-800 text-sm text-slate-200 leading-relaxed mb-6">
+        <div className="p-4 rounded-[20px] bg-brand-surface-dim border border-brand-outline-variant text-sm text-brand-secondary leading-relaxed mb-6">
           <p>{prompt}</p>
         </div>
 
@@ -88,26 +88,26 @@ export default function BurnoutGuardModal({
             value={userResponse}
             onChange={(e) => setUserResponse(e.target.value)}
             placeholder="Type your quick 1-sentence concept takeaway or answer here..."
-            className="w-full h-24 p-4 rounded-[20px] bg-slate-900/90 border border-slate-800 text-slate-100 placeholder-slate-500 text-sm focus:outline-none focus:border-amber-500/60 transition-colors resize-none"
+            className="w-full h-24 p-4 rounded-[16px] bg-white border border-brand-outline-variant text-brand-secondary placeholder:text-brand-on-surface-variant/50 text-sm focus:outline-none focus:border-brand-primary focus:ring-2 focus:ring-brand-primary/10 transition-colors resize-none"
           />
 
           <button
             onClick={handleComplete}
             disabled={isCompleted}
-            className={`w-full py-3.5 px-6 rounded-full font-bold text-sm flex items-center justify-center gap-2 transition-all duration-200 ${
+            className={`w-full py-3.5 px-6 rounded-md font-bold text-sm flex items-center justify-center gap-2 transition-all duration-150 ${
               isCompleted
-                ? "bg-emerald-500 text-obsidian-950 font-black scale-95"
-                : "bg-gradient-to-r from-amber-500 to-orange-500 text-obsidian-950 hover:brightness-110 shadow-lg shadow-amber-500/20"
+                ? "bg-emerald-600 text-white font-black scale-95"
+                : "bg-brand-tertiary hover:bg-brand-tertiary-dim text-brand-on-tertiary shadow-cta-glow"
             }`}
           >
             {isCompleted ? (
               <>
-                <CheckCircle2 className="w-5 h-5" />
+                <CheckCircle2 className="w-5 h-5 text-white" />
                 <span>Micro-Task Completed! Resuming Free Session...</span>
               </>
             ) : (
               <>
-                <Sparkles className="w-5 h-5" />
+                <Sparkles className="w-5 h-5 text-brand-secondary" />
                 <span>Complete 90s Micro-Task</span>
               </>
             )}
