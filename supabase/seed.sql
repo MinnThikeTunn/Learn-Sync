@@ -34,18 +34,22 @@ BEGIN
         v_profile_id := u.id;
 
         -- 1. Profiles
-        INSERT INTO public.profiles (id, email, full_name, learning_style, target_retention, onboarding_completed)
+        INSERT INTO public.profiles (id, email, full_name, learning_style, secondary_learning_style, assessment_scores, target_retention, onboarding_completed)
         VALUES (
             v_profile_id,
             u.email,
             COALESCE(u.raw_user_meta_data->>'full_name', u.raw_user_meta_data->>'name', split_part(u.email, '@', 1)),
             'read_write',
+            'visual',
+            '{"read_write": 2, "visual": 1, "kinesthetic": 1, "auditory": 0}'::jsonb,
             0.90,
             TRUE
         )
         ON CONFLICT (id) DO UPDATE SET
             full_name = EXCLUDED.full_name,
             learning_style = EXCLUDED.learning_style,
+            secondary_learning_style = EXCLUDED.secondary_learning_style,
+            assessment_scores = EXCLUDED.assessment_scores,
             target_retention = EXCLUDED.target_retention,
             onboarding_completed = EXCLUDED.onboarding_completed;
 

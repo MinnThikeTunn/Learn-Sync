@@ -68,7 +68,7 @@ class StudyArtifact(BaseModel):
 class GenerateArtifactRequest(BaseModel):
     """API request payload for study artifact synthesis."""
     folder_id: UUID
-    user_id: UUID
+    user_id: Optional[UUID] = None
     topic: str
     learning_style: LearningStyle
     workload_mode: Optional[WorkloadMode] = WorkloadMode.FREE

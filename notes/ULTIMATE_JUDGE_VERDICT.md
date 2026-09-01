@@ -5,6 +5,28 @@
 **Status:** ⏳ Pending Specialist Review on Recent File Edits
 
 ## Outstanding File Edits Pending Judgment
+- `C:\Users\USER\.gemini\antigravity-ide\brain\db3821b5-b357-4721-9647-08666474bf06\walkthrough.md`
+- `C:\Users\USER\.gemini\antigravity-ide\brain\db3821b5-b357-4721-9647-08666474bf06\implementation_plan.md`
+- `frontend\tailwind.config.js`
+- `frontend\postcss.config.js`
+- `C:\Users\USER\.gemini\antigravity-ide\brain\ab3d40e4-dedf-4e6d-b480-b46eaacec9b9\walkthrough.md`
+- `backend\tests\test_fsrs_2357.py`
+- `backend\app\services\blurting.py`
+- `C:\Users\USER\.gemini\antigravity-ide\brain\ab3d40e4-dedf-4e6d-b480-b46eaacec9b9\implementation_plan.md`
+- `docs\adr\0002-hybrid-2357-fsrs-spaced-repetition.md`
+- `C:\Users\USER\.gemini\antigravity-ide\brain\34e2f3d2-488e-4d19-89fd-b1c6077e8518\walkthrough.md`
+- `backend\tests\test_e2e_storage_hierarchy.py`
+- `backend\app\services\document_processor.py`
+- `backend\app\schemas\document.py`
+- `backend\tests\test_document_upload_flow.py`
+- `backend\tests\test_folders_hierarchy_flow.py`
+- `backend\app\schemas\course.py`
+- `backend\tests\test_courses_flow.py`
+- `C:\Users\USER\.gemini\antigravity-ide\brain\34e2f3d2-488e-4d19-89fd-b1c6077e8518\implementation_plan.md`
+- `C:\Users\USER\.gemini\antigravity-ide\brain\37a2f5f5-3656-4193-9601-020874e8966a\walkthrough.md`
+- `backend\app\services\learner_assessment.py`
+- `backend\tests\test_learner_assessment.py`
+- `C:\Users\USER\.gemini\antigravity-ide\brain\37a2f5f5-3656-4193-9601-020874e8966a\implementation_plan.md`
 - `C:\Users\USER\.gemini\antigravity-ide\brain\7aeb9df0-db59-48bc-bae1-633a93e4423d\walkthrough.md`
 - `frontend\components\ManualEventModal.tsx`
 - `frontend\components\AudioRecapPlayer.tsx`

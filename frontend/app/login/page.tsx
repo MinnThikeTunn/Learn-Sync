@@ -93,13 +93,19 @@ function LoginForm() {
         }
 
         setStage("processing");
-        const { error: signUpError } = await signUpWithPassword(email, password, fullName);
+        const { data: signUpData, error: signUpError } = await signUpWithPassword(email, password, fullName);
         if (signUpError) {
           setError(signUpError.message || "Registration failed. Please try again.");
           setStage("error");
+        } else if (signUpData?.session) {
+          setStage("redirecting");
+          setSuccessMessage("Account created! Directing you to your learner onboarding...");
+          setTimeout(() => {
+            router.push(redirectTo);
+          }, 800);
         } else {
           setStage("email_sent");
-          setSuccessMessage("We sent you the verification message. Please check it.");
+          setSuccessMessage("Account registered! Check your email or use the Quick Demo session below to test onboarding immediately.");
         }
       } else if (mode === "forgot") {
         if (!email) {
@@ -358,6 +364,31 @@ function LoginForm() {
                 <ArrowRight className="w-4 h-4 text-brand-secondary" />
               </>
             )}
+          </button>
+
+          {/* Quick Demo Option for Instant Onboarding Testing */}
+          <div className="relative flex items-center justify-center my-4">
+            <div className="border-t border-brand-outline-variant w-full" />
+            <span className="bg-white px-2 text-[10px] font-bold text-brand-outline uppercase tracking-wider">
+              Or Fast Track
+            </span>
+            <div className="border-t border-brand-outline-variant w-full" />
+          </div>
+
+          <button
+            type="button"
+            onClick={() => {
+              if (typeof window !== "undefined") {
+                document.cookie = "learnsync_demo_session=true; path=/; max-age=86400";
+                localStorage.removeItem("learnsync_onboarding_completed");
+                localStorage.removeItem("learnsync_learning_style");
+              }
+              router.push(redirectTo || "/");
+            }}
+            className="w-full flex items-center justify-center gap-2 py-2.5 px-4 bg-brand-surface-dim hover:bg-brand-surface border border-brand-outline-variant hover:border-brand-primary text-brand-secondary rounded-[14px] text-xs font-bold transition-all duration-150 shadow-sm"
+          >
+            <Sparkles className="w-3.5 h-3.5 text-brand-primary" />
+            <span>Launch Instant Demo & Onboarding Test</span>
           </button>
         </form>
 

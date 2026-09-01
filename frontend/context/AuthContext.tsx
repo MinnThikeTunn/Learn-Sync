@@ -9,6 +9,8 @@ export interface StudentProfile {
   email: string;
   full_name: string | null;
   learning_style: "visual" | "auditory" | "read_write" | "kinesthetic";
+  secondary_learning_style?: "visual" | "auditory" | "read_write" | "kinesthetic" | null;
+  assessment_scores?: Record<string, number>;
   target_retention: number;
   onboarding_completed: boolean;
   created_at?: string;
@@ -21,12 +23,13 @@ interface AuthContextType {
   profile: StudentProfile | null;
   isLoading: boolean;
   signInWithPassword: (email: string, password: string) => Promise<{ error: Error | null }>;
-  signUpWithPassword: (email: string, password: string, fullName?: string) => Promise<{ error: Error | null }>;
+  signUpWithPassword: (email: string, password: string, fullName?: string) => Promise<{ data?: any; error: Error | null }>;
   resetPassword: (email: string) => Promise<{ error: Error | null }>;
   updatePassword: (newPassword: string) => Promise<{ error: Error | null }>;
   signOut: () => Promise<void>;
   refreshProfile: () => Promise<void>;
   updateProfile: (updates: Partial<StudentProfile>) => Promise<{ error: Error | null }>;
+  setLearningStyle: (style: StudentProfile["learning_style"]) => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -47,22 +50,35 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         .eq("id", userId)
         .single();
 
-      if (error && error.code !== "PGRST116") {
-        console.warn("Could not fetch profile:", error.message);
-      }
-
       if (data) {
         setProfile(data as StudentProfile);
+        if (typeof window !== "undefined" && data.learning_style) {
+          localStorage.setItem("learnsync_learning_style", data.learning_style);
+          localStorage.setItem("learnsync_onboarding_completed", String(data.onboarding_completed ?? false));
+        }
       } else {
-        // Fallback default profile if trigger has not executed yet
-        setProfile({
+        // Automatically provision profile in Supabase if not created by trigger yet
+        const defaultProf: StudentProfile = {
           id: userId,
           email: userEmail || "",
           full_name: userEmail ? userEmail.split("@")[0] : "Student",
           learning_style: "read_write",
           target_retention: 0.90,
           onboarding_completed: false,
+        };
+
+        // Attempt upsert so row exists in Supabase
+        await supabase.from("profiles").upsert({
+          id: userId,
+          email: userEmail || "",
+          full_name: defaultProf.full_name,
+          learning_style: "read_write",
+          target_retention: 0.90,
+          onboarding_completed: false,
+          updated_at: new Date().toISOString(),
         });
+
+        setProfile(defaultProf);
       }
     } catch (err) {
       console.error("Error loading student profile:", err);
@@ -123,7 +139,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const signUpWithPassword = async (email: string, password: string, fullName?: string) => {
     try {
-      const { error } = await supabase.auth.signUp({
+      const { data, error } = await supabase.auth.signUp({
         email,
         password,
         options: {
@@ -132,9 +148,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           },
         },
       });
-      return { error };
+      return { data, error };
     } catch (err: any) {
-      return { error: err };
+      return { data: null, error: err };
     }
   };
 
@@ -178,23 +194,58 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   };
 
   const updateProfile = async (updates: Partial<StudentProfile>) => {
-    if (!user) return { error: new Error("User not authenticated") };
-    try {
-      const { error } = await supabase
-        .from("profiles")
-        .update({
+    // 1. Optimistic Local State & Cache Update
+    setProfile((prev) => {
+      if (prev) return { ...prev, ...updates };
+      return {
+        id: user?.id || "guest",
+        email: user?.email || "",
+        full_name: "Student",
+        learning_style: updates.learning_style || "visual",
+        target_retention: 0.90,
+        onboarding_completed: updates.onboarding_completed ?? false,
+        ...updates,
+      };
+    });
+
+    if (typeof window !== "undefined") {
+      if (updates.learning_style) {
+        localStorage.setItem("learnsync_learning_style", updates.learning_style);
+      }
+      if (updates.onboarding_completed !== undefined) {
+        localStorage.setItem("learnsync_onboarding_completed", String(updates.onboarding_completed));
+      }
+    }
+
+    // 2. Persist to Supabase if authenticated
+    if (user) {
+      try {
+        const payload: Record<string, any> = {
+          id: user.id,
+          email: user.email,
           ...updates,
           updated_at: new Date().toISOString(),
-        })
-        .eq("id", user.id);
+        };
 
-      if (!error) {
-        setProfile((prev) => (prev ? { ...prev, ...updates } : null));
+        const { error } = await supabase
+          .from("profiles")
+          .upsert(payload, { onConflict: "id" });
+
+        if (error) {
+          console.warn("Supabase profile upsert returned warning/error:", error.message);
+        }
+        return { error };
+      } catch (err: any) {
+        console.error("Supabase profile upsert exception:", err);
+        return { error: err };
       }
-      return { error };
-    } catch (err: any) {
-      return { error: err };
     }
+
+    return { error: null };
+  };
+
+  const setLearningStyle = async (style: StudentProfile["learning_style"]) => {
+    await updateProfile({ learning_style: style });
   };
 
   return (
@@ -211,6 +262,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         signOut,
         refreshProfile,
         updateProfile,
+        setLearningStyle,
       }}
     >
       {children}

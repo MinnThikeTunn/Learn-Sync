@@ -15,7 +15,12 @@ import {
   User,
   Settings,
   ChevronDown,
-  LogIn
+  LogIn,
+  Eye,
+  Headphones,
+  BookOpen,
+  Code2,
+  Check
 } from "lucide-react";
 import { useAuth } from "../context/AuthContext";
 
@@ -35,9 +40,11 @@ export default function Navbar({
   onOpenOnboardingModal,
 }: NavbarProps) {
   const pathname = usePathname();
-  const { user, profile, signOut } = useAuth();
+  const { user, profile, signOut, setLearningStyle } = useAuth();
   const [dropdownOpen, setDropdownOpen] = useState(false);
+  const [styleMenuOpen, setStyleMenuOpen] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
+  const styleMenuRef = useRef<HTMLDivElement>(null);
 
   const effectiveLearningStyle = profile?.learning_style || propLearningStyle || "visual";
   const isBusy = activeMode === "busy";
@@ -54,6 +61,9 @@ export default function Navbar({
     function handleClickOutside(event: MouseEvent) {
       if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
         setDropdownOpen(false);
+      }
+      if (styleMenuRef.current && !styleMenuRef.current.contains(event.target as Node)) {
+        setStyleMenuOpen(false);
       }
     }
     document.addEventListener("mousedown", handleClickOutside);
@@ -110,10 +120,81 @@ export default function Navbar({
 
         {/* Right Action & Telemetry */}
         <div className="flex items-center gap-2.5 sm:gap-3">
-          {/* Learning Style Pill */}
-          <div className="hidden sm:flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-brand-surface-dim border border-brand-outline-variant text-xs font-bold text-brand-secondary">
-            <span className="w-2 h-2 rounded-full bg-brand-primary animate-pulse" />
-            <span className="capitalize">{effectiveLearningStyle}</span>
+          {/* Interactive Learning Style Switcher */}
+          <div className="relative hidden sm:block" ref={styleMenuRef}>
+            <button
+              onClick={() => setStyleMenuOpen(!styleMenuOpen)}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-brand-surface-dim hover:bg-white border border-brand-outline-variant hover:border-brand-primary text-xs font-bold text-brand-secondary transition-all shadow-sm"
+              title="Click to switch learning style"
+            >
+              <span className="w-2 h-2 rounded-full bg-brand-primary animate-pulse" />
+              <span className="capitalize">{effectiveLearningStyle.replace("_", " ")}</span>
+              <ChevronDown className="w-3 h-3 text-brand-on-surface-variant opacity-70" />
+            </button>
+
+            {/* Quick Switch Dropdown */}
+            {styleMenuOpen && (
+              <div className="absolute right-0 mt-2 w-64 bg-white border border-brand-outline-variant rounded-[20px] shadow-elevation-md py-2.5 px-2 z-50 animate-in fade-in slide-in-from-top-2 duration-150">
+                <div className="px-2.5 py-1.5 border-b border-brand-outline-variant/60 mb-1.5 flex items-center justify-between">
+                  <span className="text-[11px] font-black uppercase tracking-wider text-brand-on-surface-variant">
+                    Cognitive Modality
+                  </span>
+                  <span className="text-[10px] text-brand-primary font-bold">1-Click Switch</span>
+                </div>
+
+                <div className="space-y-1">
+                  {[
+                    { id: "visual", label: "Visual", desc: "Mermaid diagrams & flowcharts", icon: Eye, color: "text-cyan-600" },
+                    { id: "auditory", label: "Auditory", desc: "Socratic podcasts & voice recaps", icon: Headphones, color: "text-purple-600" },
+                    { id: "read_write", label: "Read / Write", desc: "Structured markdown & notes", icon: BookOpen, color: "text-emerald-600" },
+                    { id: "kinesthetic", label: "Kinesthetic", desc: "Interactive sandboxes & labs", icon: Code2, color: "text-amber-600" },
+                  ].map((item) => {
+                    const Icon = item.icon;
+                    const isCurrent = effectiveLearningStyle === item.id;
+                    return (
+                      <button
+                        key={item.id}
+                        onClick={async () => {
+                          await setLearningStyle(item.id as any);
+                          setStyleMenuOpen(false);
+                        }}
+                        className={`w-full flex items-center justify-between p-2 rounded-[14px] text-left transition-colors ${
+                          isCurrent
+                            ? "bg-brand-surface-dim border border-brand-primary/40 font-bold"
+                            : "hover:bg-brand-surface-dim/60 font-medium"
+                        }`}
+                      >
+                        <div className="flex items-center gap-2.5">
+                          <div className={`w-7 h-7 rounded-[10px] bg-brand-surface flex items-center justify-center ${item.color}`}>
+                            <Icon className="w-4 h-4" />
+                          </div>
+                          <div>
+                            <p className="text-xs font-bold text-brand-secondary">{item.label}</p>
+                            <p className="text-[10px] text-brand-on-surface-variant line-clamp-1">{item.desc}</p>
+                          </div>
+                        </div>
+                        {isCurrent && <Check className="w-3.5 h-3.5 text-brand-primary stroke-[3]" />}
+                      </button>
+                    );
+                  })}
+                </div>
+
+                {onOpenOnboardingModal && (
+                  <div className="mt-2 pt-2 border-t border-brand-outline-variant/60">
+                    <button
+                      onClick={() => {
+                        setStyleMenuOpen(false);
+                        onOpenOnboardingModal();
+                      }}
+                      className="w-full flex items-center gap-2 px-2.5 py-1.5 rounded-[12px] text-xs font-bold text-brand-primary hover:bg-brand-surface-dim transition-colors"
+                    >
+                      <Sparkles className="w-3.5 h-3.5" />
+                      <span>Take Diagnostic Assessment</span>
+                    </button>
+                  </div>
+                )}
+              </div>
+            )}
           </div>
 
           {/* Workload Status Pill */}

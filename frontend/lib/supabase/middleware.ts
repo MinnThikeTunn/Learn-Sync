@@ -41,8 +41,10 @@ export async function updateSession(request: NextRequest) {
     pathname.startsWith("/auth") ||
     pathname.startsWith("/reset-password");
 
+  const hasDemoCookie = request.cookies.get("learnsync_demo_session")?.value === "true";
+
   // Redirect unauthenticated user accessing protected route
-  if (!user && !isAuthRoute) {
+  if (!user && !hasDemoCookie && !isAuthRoute) {
     // Only redirect if real Supabase URL is configured or if enforcing auth
     if (
       process.env.NEXT_PUBLIC_SUPABASE_URL &&

@@ -16,6 +16,8 @@ CREATE TABLE IF NOT EXISTS public.profiles (
     email TEXT UNIQUE NOT NULL,
     full_name TEXT,
     learning_style TEXT CHECK (learning_style IN ('visual', 'auditory', 'read_write', 'kinesthetic')) DEFAULT 'read_write',
+    secondary_learning_style TEXT CHECK (secondary_learning_style IN ('visual', 'auditory', 'read_write', 'kinesthetic')),
+    assessment_scores JSONB DEFAULT '{}'::jsonb,
     target_retention REAL DEFAULT 0.90 CHECK (target_retention > 0.0 AND target_retention <= 1.0),
     onboarding_completed BOOLEAN DEFAULT FALSE,
     created_at TIMESTAMPTZ DEFAULT NOW(),

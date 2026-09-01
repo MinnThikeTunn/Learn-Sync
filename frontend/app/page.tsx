@@ -102,8 +102,19 @@ export default function DashboardPage() {
       if (profile.learning_style) {
         setLearningStyle(profile.learning_style);
       }
-      if (profile.onboarding_completed === false) {
+      if (profile.onboarding_completed === false || !profile.learning_style) {
         setShowOnboarding(true);
+      }
+    } else {
+      // Check client-side storage for new / testing / unconfirmed sessions
+      if (typeof window !== "undefined") {
+        const completed = localStorage.getItem("learnsync_onboarding_completed");
+        const cachedStyle = localStorage.getItem("learnsync_learning_style");
+        if (completed !== "true" || !cachedStyle) {
+          setShowOnboarding(true);
+        } else {
+          setLearningStyle(cachedStyle as any);
+        }
       }
     }
     fetchLiveWorkloadAndEvents();

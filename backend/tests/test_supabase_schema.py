@@ -35,6 +35,9 @@ def test_schema_contains_all_core_tables():
     for table in expected_tables:
         assert f"CREATE TABLE IF NOT EXISTS public.{table}" in content, f"Table public.{table} missing from schema"
 
+    assert "secondary_learning_style TEXT CHECK" in content
+    assert "assessment_scores JSONB" in content
+
 
 def test_schema_extensions_and_indexes():
     """Verify pgvector, pg_trgm, uuid-ossp extensions and HNSW/GIN indexes are declared."""

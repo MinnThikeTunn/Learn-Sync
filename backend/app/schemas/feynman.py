@@ -14,8 +14,8 @@ class FeynmanPromptTarget(str, Enum):
 
 
 class FeynmanPromptRequest(BaseModel):
-    user_id: UUID
-    folder_id: UUID
+    user_id: Optional[UUID] = None
+    folder_id: Optional[UUID] = None
     concept: str = Field(..., min_length=2, description="Target concept to explain")
     kc_id: Optional[UUID] = None
     target_audience: FeynmanPromptTarget = FeynmanPromptTarget.CHILD
@@ -48,7 +48,7 @@ class RemedialFlashcardCandidate(BaseModel):
     front: str = Field(..., min_length=1, description="Targeted question addressing gap/misconception")
     back: str = Field(..., min_length=1, description="Clear, bite-sized corrective explanation")
     kc_id: Optional[UUID] = None
-    folder_id: UUID
+    folder_id: Optional[UUID] = None
 
 
 class GapAnalysisResult(BaseModel):
@@ -65,8 +65,8 @@ class GapAnalysisResult(BaseModel):
 
 
 class FeynmanEvaluationRequest(BaseModel):
-    user_id: UUID
-    folder_id: UUID
+    user_id: Optional[UUID] = None
+    folder_id: Optional[UUID] = None
     concept: str = Field(..., min_length=2)
     student_explanation: str = Field(..., min_length=5, description="Student's plain-language explanation")
     kc_id: Optional[UUID] = None

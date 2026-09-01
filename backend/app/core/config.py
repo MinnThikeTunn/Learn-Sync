@@ -37,7 +37,7 @@ class Settings(BaseSettings):
     LLM_RETRY_BACKOFF_SECONDS: float = 2.0
     
     model_config = SettingsConfigDict(
-        env_file=".env",
+        env_file=(".env", "backend/.env"),
         env_file_encoding="utf-8",
         extra="ignore"
     )

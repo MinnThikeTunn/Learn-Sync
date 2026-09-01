@@ -20,10 +20,15 @@ class SupabaseVectorClient:
     def client(self):
         if self._client is None:
             try:
-                from supabase import create_client
-                self._client = create_client(self.url, self.key)
+                from supabase import create_client, ClientOptions
+                options = ClientOptions(postgrest_client_timeout=3.0, storage_client_timeout=3.0)
+                self._client = create_client(self.url, self.key, options=options)
             except Exception:
-                self._client = None
+                try:
+                    from supabase import create_client
+                    self._client = create_client(self.url, self.key)
+                except Exception:
+                    self._client = None
         return self._client
 
     @staticmethod
