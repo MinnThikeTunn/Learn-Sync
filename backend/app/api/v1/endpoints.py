@@ -1,5 +1,5 @@
 import logging
-from fastapi import APIRouter, UploadFile, File, Form, HTTPException, Query, Depends
+from fastapi import APIRouter, UploadFile, File, Form, HTTPException, Query, Depends, Response
 from typing import List, Optional
 from uuid import UUID
 from pydantic import BaseModel, Field
@@ -38,6 +38,8 @@ from backend.app.schemas.fsrs import (
     DeckOverviewResponse,
     DeckCompletionRequest,
     DeckCompletionResponse,
+    HybridReviewSessionRequest,
+    HybridReviewSessionResponse,
 )
 from backend.app.schemas.feynman import (
     FeynmanPromptRequest,
@@ -48,6 +50,7 @@ from backend.app.schemas.feynman import (
 from backend.app.schemas.bkt import BKTUpdateRequest, BKTUpdateResponse
 from backend.app.schemas.burnout import BurnoutTriggerRequest, BurnoutTriggerResponse
 
+from backend.app.services.database import db_service
 from backend.app.services.parser import SyllabusIngestionService
 from backend.app.services.workload import WorkloadEngine
 from backend.app.services.rag import AdaptiveLearningEngine
@@ -183,10 +186,23 @@ def evaluate_blurting_endpoint(
     request: BlurtingEvaluationRequest,
     current_user: UUID = Depends(get_current_user),
 ):
-    """Evaluates student's unprompted recall against document knowledge components."""
+    """Evaluates student's unprompted recall against document knowledge components and records completion."""
+    effective_user_id = current_user or UUID("00000000-0000-0000-0000-000000000001")
     if not request.folder_id:
         request.folder_id = UUID("00000000-0000-0000-0000-000000000002")
-    return BlurtingService.evaluate_recall(request)
+    result = BlurtingService.evaluate_recall(request)
+
+    from backend.app.services.database import db_service
+    db_service.record_blurting_completion(
+        user_id=effective_user_id,
+        folder_id=request.folder_id,
+        document_id=request.document_id,
+        file_name=request.file_name,
+        topic=request.topic,
+        duration_seconds=request.duration_seconds or 60.0,
+        accuracy_score=result.accuracy_score,
+    )
+    return result
 
 
 @router.post("/flashcards/review", response_model=FlashcardReviewResponse)
@@ -233,6 +249,33 @@ def complete_deck_review_session(
     )
 
 
+@router.post("/review/hybrid-session", response_model=HybridReviewSessionResponse)
+def submit_hybrid_review_session(
+    request: HybridReviewSessionRequest,
+    current_user: UUID = Depends(get_current_user),
+):
+    """
+    Submits the unified Two-Step Hybrid Review Session:
+    1. Evaluates unprompted memory recall dump (Raw Blurting).
+    2. Evaluates simplified plain-language explanation (Feynman Synthesis).
+    3. Advances deck flashcards along the 2357 Spaced Repetition schedule.
+    4. Marks recall_finished=True and feynman_finished=True attached to the specific file.
+    """
+    effective_user_id = current_user or UUID("00000000-0000-0000-0000-000000000001")
+    return db_service.record_hybrid_review_session(
+        user_id=effective_user_id,
+        folder_id=request.folder_id,
+        document_id=request.document_id,
+        file_name=request.file_name,
+        topic=request.topic,
+        cards_reviewed=request.cards_reviewed,
+        blurting_content=request.blurting_content,
+        blurting_duration_seconds=request.blurting_duration_seconds,
+        feynman_explanation=request.feynman_explanation,
+        target_audience=request.target_audience or "beginner",
+    )
+
+
 @router.post("/feynman/prompt", response_model=FeynmanPromptResponse)
 def get_feynman_prompt(
     request: FeynmanPromptRequest,
@@ -251,12 +294,25 @@ def evaluate_feynman_explanation(
     request: FeynmanEvaluationRequest,
     current_user: UUID = Depends(get_current_user),
 ):
-    """Evaluates student explanation with precision-gap analysis and auto-generates remedial cards."""
+    """Evaluates student explanation with precision-gap analysis and records completion."""
+    effective_user_id = current_user or request.user_id or UUID("00000000-0000-0000-0000-000000000001")
     if not request.user_id:
-        request.user_id = current_user
+        request.user_id = effective_user_id
     if not request.folder_id:
         request.folder_id = UUID("00000000-0000-0000-0000-000000000002")
-    return FeynmanService.evaluate_explanation(request)
+    result = FeynmanService.evaluate_explanation(request)
+
+    from backend.app.services.database import db_service
+    score_pct = int(round(result.completeness_score * 100))
+    db_service.record_feynman_completion(
+        user_id=effective_user_id,
+        folder_id=request.folder_id,
+        document_id=request.document_id,
+        file_name=request.file_name,
+        topic=request.concept,
+        feynman_score=score_pct,
+    )
+    return result
 
 
 @router.post("/bkt/update", response_model=BKTUpdateResponse)
@@ -386,7 +442,12 @@ def delete_folder(
     return {"status": "deleted", "id": str(folder_id)}
 
 
-from backend.app.schemas.document import DocumentResponse, DocumentUploadResponse
+from backend.app.schemas.document import (
+    DocumentResponse,
+    DocumentUploadResponse,
+    DocumentContentResponse,
+    DocumentChunkDetail,
+)
 
 
 @router.post("/documents/upload", response_model=DocumentUploadResponse, status_code=201)
@@ -423,6 +484,101 @@ def list_documents(
     """Retrieves uploaded documents filtered by folder and/or course."""
     from backend.app.services.database import db_service
     return db_service.get_documents(user_id=current_user, folder_id=folder_id, course_id=course_id)
+
+
+@router.get("/documents/{document_id}/content", response_model=DocumentContentResponse)
+def get_document_content(
+    document_id: UUID,
+    current_user: UUID = Depends(get_current_user),
+):
+    """
+    Retrieves full extracted text, all chunks, reading stats, and storage URLs 
+    for the document reader pop-up.
+    """
+    from backend.app.services.database import db_service
+    doc = db_service.get_document(user_id=current_user, document_id=document_id)
+    if not doc:
+        raise HTTPException(status_code=404, detail="Document not found or unauthorized")
+
+    chunks_raw = db_service.get_all_document_chunks(user_id=current_user, document_id=document_id)
+    sorted_chunks = sorted(chunks_raw, key=lambda c: c.get("chunk_index", 0))
+    chunk_details = [
+        DocumentChunkDetail(
+            id=str(c.get("id")) if c.get("id") else None,
+            chunk_index=c.get("chunk_index", idx),
+            content=c.get("content", ""),
+            token_count=c.get("token_count", 0),
+        )
+        for idx, c in enumerate(sorted_chunks)
+    ]
+
+    full_text = "\n\n".join([c.content for c in chunk_details if c.content.strip()]).strip()
+    words = len(full_text.split()) if full_text else 0
+    reading_time = max(1, round(words / 200)) if words > 0 else 1
+
+    storage_path = doc.get("storage_path", "")
+    signed_url = db_service.get_document_signed_url(storage_path) if storage_path else None
+    raw_url = f"/api/v1/documents/{document_id}/raw"
+
+    return DocumentContentResponse(
+        id=UUID(str(doc["id"])),
+        file_name=doc.get("file_name", "document"),
+        file_type=doc.get("file_type", "application/octet-stream"),
+        file_size_bytes=doc.get("file_size_bytes", 0),
+        storage_path=storage_path,
+        status=doc.get("status", "indexed"),
+        signed_url=signed_url,
+        raw_url=raw_url,
+        full_text=full_text,
+        chunks=chunk_details,
+        total_chunks=len(chunk_details),
+        total_words=words,
+        estimated_read_time_minutes=reading_time,
+    )
+
+
+@router.get("/documents/{document_id}/raw")
+def get_document_raw(
+    document_id: UUID,
+    current_user: UUID = Depends(get_current_user),
+):
+    """
+    Streams original document file bytes for native PDF reader iframe or download.
+    Falls back to extracted text chunks if storage is unreachable.
+    """
+    import urllib.parse
+    from backend.app.services.database import db_service
+
+    doc = db_service.get_document(user_id=current_user, document_id=document_id)
+    if not doc:
+        raise HTTPException(status_code=404, detail="Document not found or unauthorized")
+
+    file_name = doc.get("file_name", "document")
+    mime_type = doc.get("file_type", "application/octet-stream")
+    storage_path = doc.get("storage_path")
+
+    safe_filename = urllib.parse.quote(file_name)
+    headers = {
+        "Content-Disposition": f'inline; filename="{safe_filename}"; filename*=UTF-8\'\'{safe_filename}',
+    }
+
+    if storage_path:
+        file_bytes = db_service.download_document_bytes(storage_path)
+        if file_bytes:
+            return Response(content=file_bytes, media_type=mime_type, headers=headers)
+
+    chunks_raw = db_service.get_all_document_chunks(user_id=current_user, document_id=document_id)
+    sorted_chunks = sorted(chunks_raw, key=lambda c: c.get("chunk_index", 0))
+    full_text = "\n\n".join([c.get("content", "") for c in sorted_chunks if c.get("content", "").strip()]).strip()
+    if not full_text:
+        full_text = f"Document: {file_name}\n(No text content found)"
+
+    return Response(
+        content=full_text.encode("utf-8"),
+        media_type="text/plain; charset=utf-8",
+        headers={"Content-Disposition": f'inline; filename="{safe_filename}.txt"'},
+    )
+
 
 
 @router.delete("/documents/{document_id}")

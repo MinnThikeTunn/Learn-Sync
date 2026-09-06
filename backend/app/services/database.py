@@ -20,6 +20,7 @@ class DatabaseService:
 
     def __init__(self, supabase_client: Optional[SupabaseVectorClient] = None):
         self.supabase = supabase_client or SupabaseVectorClient()
+        self._hybrid_sessions: Dict[Any, Dict[str, Any]] = {}
 
     def create_course(
         self,
@@ -190,6 +191,32 @@ class DatabaseService:
             logger.warning(f"Failed to fetch documents: {e}")
             return []
 
+    def get_document(self, user_id: UUID, document_id: UUID) -> Optional[Dict[str, Any]]:
+        if not self.supabase.client:
+            return None
+        try:
+            res = (
+                self.supabase.client.table("documents")
+                .select("*")
+                .eq("id", str(document_id))
+                .eq("user_id", str(user_id))
+                .execute()
+            )
+            data = res.data or []
+            if not data and str(user_id) == "00000000-0000-0000-0000-000000000001":
+                fb_res = (
+                    self.supabase.client.table("documents")
+                    .select("*")
+                    .eq("id", str(document_id))
+                    .execute()
+                )
+                data = fb_res.data or []
+            return data[0] if data else None
+        except Exception as e:
+            logger.warning(f"Failed to fetch document {document_id}: {e}")
+            return None
+
+
     def update_document_status(
         self,
         doc_id: UUID,
@@ -292,13 +319,24 @@ class DatabaseService:
         if not self.supabase.client:
             return []
         try:
-            query = self.supabase.client.table("document_chunks").select("*").eq("user_id", str(user_id))
+            query = self.supabase.client.table("document_chunks").select("*")
+            if user_id:
+                query = query.eq("user_id", str(user_id))
             if document_id:
                 query = query.eq("document_id", str(document_id))
             elif folder_id:
                 query = query.eq("folder_id", str(folder_id))
             res = query.order("chunk_index").limit(limit).execute()
-            return res.data or []
+            data = res.data or []
+            if not data and (document_id or folder_id):
+                fb_query = self.supabase.client.table("document_chunks").select("*")
+                if document_id:
+                    fb_query = fb_query.eq("document_id", str(document_id))
+                elif folder_id:
+                    fb_query = fb_query.eq("folder_id", str(folder_id))
+                fb_res = fb_query.order("chunk_index").limit(limit).execute()
+                data = fb_res.data or []
+            return data
         except Exception as e:
             logger.warning(f"Failed to fetch document chunks: {e}")
             return []
@@ -312,6 +350,33 @@ class DatabaseService:
         except Exception as e:
             logger.warning(f"Failed to create document chunks: {e}")
             return []
+
+    def get_all_document_chunks(self, user_id: UUID, document_id: UUID) -> List[Dict[str, Any]]:
+        return self.get_document_chunks(user_id=user_id, document_id=document_id, limit=2000)
+
+    def get_document_signed_url(self, storage_path: str, expires_in: int = 3600) -> Optional[str]:
+        if not self.supabase.client or not storage_path:
+            return None
+        try:
+            res = self.supabase.client.storage.from_("documents").create_signed_url(storage_path, expires_in=expires_in)
+            if isinstance(res, dict):
+                return res.get("signedURL") or res.get("signedUrl")
+            elif isinstance(res, str):
+                return res
+            return None
+        except Exception as e:
+            logger.warning(f"Failed to create signed URL for {storage_path}: {e}")
+            return None
+
+    def download_document_bytes(self, storage_path: str) -> Optional[bytes]:
+        if not self.supabase.client or not storage_path:
+            return None
+        try:
+            return self.supabase.client.storage.from_("documents").download(storage_path)
+        except Exception as e:
+            logger.warning(f"Failed to download document bytes for {storage_path}: {e}")
+            return None
+
 
     def delete_document(self, user_id: UUID, document_id: UUID) -> bool:
         if not self.supabase.client:
@@ -640,6 +705,10 @@ class DatabaseService:
             # Match cards: by document_id first, then folder_id
             matched_cards = cards_by_doc.get(doc_id) or cards_by_folder.get(fid) or []
 
+            # A document only reaches Review once learning is finished (status == 'learned') or review cards exist
+            if d.get("status") != "learned" and not matched_cards:
+                continue
+
             f_info = folders_map.get(fid, {})
             c_info = courses_map.get(str(d.get("course_id") or f_info.get("course_id") or ""), {})
 
@@ -737,13 +806,18 @@ class DatabaseService:
                         except Exception:
                             pass
 
-            next_stage_label = "Day 3 (Second Review)"
-            if stage_counts["day_7"] > 0:
-                next_stage_label = "FSRS Retention"
-            elif stage_counts["day_5"] > 0:
-                next_stage_label = "Day 7 (Consolidation)"
-            elif stage_counts["day_3"] > 0:
+            if stage_counts.get("day_1", 0) > 0:
+                next_stage_label = "Day 1 (First Review)"
+            elif stage_counts.get("day_3", 0) > 0:
+                next_stage_label = "Day 3 (Second Review)"
+            elif stage_counts.get("day_5", 0) > 0:
                 next_stage_label = "Day 5 (Third Review)"
+            elif stage_counts.get("day_7", 0) > 0:
+                next_stage_label = "Day 7 (Consolidation)"
+            elif graduated_cards == total_cards and total_cards > 0:
+                next_stage_label = "FSRS Retention"
+            else:
+                next_stage_label = "Day 1 (First Review)"
 
             if total_cards == 0:
                 status = "not_started"
@@ -755,6 +829,25 @@ class DatabaseService:
                 status = "up_to_date"
 
             next_due = min(upcoming_dues) if upcoming_dues else None
+
+            # Check if hybrid review session was completed for this file
+            hybrid_rec = None
+            if hasattr(self, "_hybrid_sessions"):
+                hybrid_rec = (
+                    self._hybrid_sessions.get((str(user_id), str(doc_id)))
+                    or self._hybrid_sessions.get((str(user_id), file_name))
+                    or self._hybrid_sessions.get((str(user_id), raw_topic))
+                    or self._hybrid_sessions.get((str(user_id), raw_topic.lower().strip()))
+                    or self._hybrid_sessions.get((str(user_id), str(fid)))
+                )
+            recall_done = bool(hybrid_rec and hybrid_rec.get("recall_finished") and (hybrid_rec.get("blurting_accuracy") or 0) >= 70)
+            feynman_done = bool(hybrid_rec and hybrid_rec.get("feynman_finished") and (hybrid_rec.get("feynman_score") or 0) >= 70)
+            last_sec = hybrid_rec.get("blurting_duration_seconds") if hybrid_rec else None
+            last_acc = hybrid_rec.get("blurting_accuracy") if hybrid_rec else None
+            last_fey = hybrid_rec.get("feynman_score") if hybrid_rec else None
+
+            if hybrid_rec:
+                finished_today = True
 
             files_stats.append({
                 "document_id": doc_id,
@@ -778,6 +871,11 @@ class DatabaseService:
                 "status": "up_to_date" if finished_today and not needs_review else status,
                 "next_review_due": next_due.isoformat() if next_due else None,
                 "stage_breakdown": stage_counts,
+                "recall_finished": recall_done,
+                "feynman_finished": feynman_done,
+                "last_recall_seconds": last_sec,
+                "last_blurting_accuracy": last_acc,
+                "last_feynman_score": last_fey,
             })
 
         # 4. Check for orphan cards in folders without docs
@@ -870,13 +968,37 @@ class DatabaseService:
                             except Exception:
                                 pass
 
-                next_stage_label = "Day 3 (Second Review)"
-                if stage_counts["day_7"] > 0:
-                    next_stage_label = "FSRS Retention"
-                elif stage_counts["day_5"] > 0:
-                    next_stage_label = "Day 7 (Consolidation)"
-                elif stage_counts["day_3"] > 0:
+                if stage_counts.get("day_1", 0) > 0:
+                    next_stage_label = "Day 1 (First Review)"
+                elif stage_counts.get("day_3", 0) > 0:
+                    next_stage_label = "Day 3 (Second Review)"
+                elif stage_counts.get("day_5", 0) > 0:
                     next_stage_label = "Day 5 (Third Review)"
+                elif stage_counts.get("day_7", 0) > 0:
+                    next_stage_label = "Day 7 (Consolidation)"
+                elif graduated_cards == total_cards and total_cards > 0:
+                    next_stage_label = "FSRS Retention"
+                else:
+                    next_stage_label = "Day 1 (First Review)"
+
+                # Check if hybrid review session was completed for this orphan folder/file
+                orphan_rec = None
+                if hasattr(self, "_hybrid_sessions"):
+                    orphan_topic = fname.rsplit(".", 1)[0].replace("_", " ")
+                    orphan_rec = (
+                        self._hybrid_sessions.get((str(user_id), fname))
+                        or self._hybrid_sessions.get((str(user_id), orphan_topic))
+                        or self._hybrid_sessions.get((str(user_id), orphan_topic.lower().strip()))
+                        or self._hybrid_sessions.get((str(user_id), str(fid)))
+                    )
+                orphan_recall = bool(orphan_rec and orphan_rec.get("recall_finished") and (orphan_rec.get("blurting_accuracy") or 0) >= 70)
+                orphan_feynman = bool(orphan_rec and orphan_rec.get("feynman_finished") and (orphan_rec.get("feynman_score") or 0) >= 70)
+                orphan_sec = orphan_rec.get("blurting_duration_seconds") if orphan_rec else None
+                orphan_acc = orphan_rec.get("blurting_accuracy") if orphan_rec else None
+                orphan_fey = orphan_rec.get("feynman_score") if orphan_rec else None
+
+                if orphan_rec:
+                    finished_today = True
 
                 files_stats.append({
                     "document_id": None,
@@ -900,6 +1022,11 @@ class DatabaseService:
                     "status": "up_to_date" if finished_today and not needs_review else status,
                     "next_review_due": next_due.isoformat() if next_due else None,
                     "stage_breakdown": stage_counts,
+                    "recall_finished": orphan_recall,
+                    "feynman_finished": orphan_feynman,
+                    "last_recall_seconds": orphan_sec,
+                    "last_blurting_accuracy": orphan_acc,
+                    "last_feynman_score": orphan_fey,
                 })
 
         # Summary totals
@@ -944,11 +1071,14 @@ class DatabaseService:
         effective_uid = user_id
         if str(user_id) == "00000000-0000-0000-0000-000000000001":
             for dev_uid in ["5602e9c3-3747-428d-94c5-6838a8a59ce8", "0ac178f0-f5b7-4d96-a8b0-b77f8b60c5c6"]:
-                if self.supabase.client:
-                    test_cards = self.supabase.client.table("flashcards").select("id").eq("user_id", dev_uid).limit(1).execute().data
-                    if test_cards:
-                        effective_uid = UUID(dev_uid)
-                        break
+                try:
+                    if self.supabase.client:
+                        test_cards = self.supabase.client.table("flashcards").select("id").eq("user_id", dev_uid).limit(1).execute().data
+                        if test_cards:
+                            effective_uid = UUID(dev_uid)
+                            break
+                except Exception:
+                    pass
 
         cards_updated = 0
         next_due = now + timedelta(days=2)
@@ -972,18 +1102,33 @@ class DatabaseService:
 
                     due_val = c.get("due")
                     is_due = True
+                    due_dt = None
                     if due_val:
                         try:
                             due_dt = datetime.fromisoformat(due_val) if isinstance(due_val, str) else due_val
                             if due_dt.tzinfo is None:
                                 due_dt = due_dt.replace(tzinfo=timezone.utc)
-                            if due_dt > now + timedelta(days=1.0):
+                            if due_dt > now + timedelta(minutes=5):
                                 is_due = False
                                 future_dues.append((due_dt, c_stage))
                             else:
                                 is_due = True
                         except Exception:
                             is_due = True
+
+                    # Also check last_review (if reviewed within last 12 hours, do not re-advance on same day)
+                    lr = c.get("last_review")
+                    if lr:
+                        try:
+                            lr_dt = datetime.fromisoformat(lr) if isinstance(lr, str) else lr
+                            if lr_dt.tzinfo is None:
+                                lr_dt = lr_dt.replace(tzinfo=timezone.utc)
+                            if (now - lr_dt).total_seconds() < 43200:
+                                is_due = False
+                                if due_dt and (due_dt, c_stage) not in future_dues:
+                                    future_dues.append((due_dt, c_stage))
+                        except Exception:
+                            pass
 
                     if is_due:
                         # Advance this due card to the next 2357 milestone
@@ -1035,7 +1180,9 @@ class DatabaseService:
                     future_dues.sort(key=lambda x: x[0])
                     next_due = future_dues[0][0]
                     card_stg = str(future_dues[0][1] or "")
-                    if "day3" in card_stg:
+                    if "day1" in card_stg:
+                        next_stage = "2357_day1"
+                    elif "day3" in card_stg:
                         next_stage = "2357_day3"
                     elif "day5" in card_stg:
                         next_stage = "2357_day5"
@@ -1044,7 +1191,7 @@ class DatabaseService:
                     elif "graduated" in card_stg:
                         next_stage = "graduated_fsrs"
                     else:
-                        next_stage = "2357_day3"
+                        next_stage = card_stg
 
             except Exception as e:
                 logger.warning(f"Error in record_deck_completion: {e}")
@@ -1058,9 +1205,25 @@ class DatabaseService:
             except Exception:
                 pass
 
+        stage_label_map = {
+            "2357_day1": "Day 1 (First Review)",
+            "2357_day3": "Day 3 (Second Review)",
+            "2357_day5": "Day 5 (Third Review)",
+            "2357_day7": "Day 7 (Consolidation)",
+            "graduated_fsrs": "FSRS Retention",
+        }
+        display_label = stage_label_map.get(next_stage, next_stage)
+
+        if cards_updated == 0:
+            is_extra_practice = True
+            msg = f"Recorded: Extra practice complete! Your scheduled milestone ({display_label}) remains set for {next_due.strftime('%B %d, %Y')}. Review on that exact date to advance to the next step."
+        else:
+            is_extra_practice = False
+            msg = f"Recorded: Deck review finished for today! The next review milestone ({display_label}) is scheduled for {next_due.strftime('%B %d, %Y')}."
+
         return {
             "status": "success",
-            "message": f"Recorded: Deck review finished for today! The second review milestone ({next_stage}) is scheduled for {next_due.strftime('%B %d, %Y')}.",
+            "message": msg,
             "file_name": resolved_name,
             "folder_id": folder_id,
             "document_id": document_id,
@@ -1069,7 +1232,313 @@ class DatabaseService:
             "current_stage": current_stage,
             "next_stage": next_stage,
             "next_review_due": next_due,
+            "is_extra_practice": is_extra_practice,
         }
+
+    def record_hybrid_review_session(
+        self,
+        user_id: UUID,
+        folder_id: UUID,
+        document_id: Optional[UUID] = None,
+        file_name: Optional[str] = None,
+        topic: Optional[str] = None,
+        cards_reviewed: int = 0,
+        blurting_content: str = "",
+        blurting_duration_seconds: float = 0.0,
+        feynman_explanation: str = "",
+        target_audience: str = "beginner",
+        repository: Optional[Any] = None,
+    ) -> Dict[str, Any]:
+        """
+        Records the unified Two-Step Hybrid Review Session:
+        1. Runs Blurting memory recall precision analysis.
+        2. Runs Feynman conceptual simplification & gap analysis.
+        3. Advances due cards for this deck in the 2357 spaced repetition schedule (Day 1 -> Day 3, etc.).
+        4. Marks recall_finished=True and feynman_finished=True attached to the specific file.
+        """
+        from datetime import datetime, timezone, timedelta
+        import uuid
+        from backend.app.schemas.fsrs import BlurtingEvaluationRequest, ScheduleStage
+        from backend.app.services.blurting import BlurtingService
+        from backend.app.services.feynman import FeynmanService
+        from backend.app.schemas.feynman import FeynmanEvaluationRequest, FeynmanPromptTarget
+
+        now = datetime.now(timezone.utc)
+        resolved_name = file_name or "Active Document"
+        resolved_topic = topic or (file_name.rsplit(".", 1)[0].replace("_", " ") if file_name else "General Topic")
+
+        # 1. Evaluate Blurting recall
+        blurting_eval = BlurtingService.evaluate_recall(
+            BlurtingEvaluationRequest(
+                topic=resolved_topic,
+                user_recall_text=blurting_content,
+            )
+        )
+
+        # 2. Evaluate Feynman explanation
+        target_aud_enum = FeynmanPromptTarget.CHILD
+        if target_audience == "non_technical":
+            target_aud_enum = FeynmanPromptTarget.NON_TECHNICAL
+        elif target_audience in ["peer", "peer_beginner"]:
+            target_aud_enum = FeynmanPromptTarget.PEER_BEGINNER
+
+        feynman_eval = FeynmanService.evaluate_explanation(
+            FeynmanEvaluationRequest(
+                concept=resolved_topic,
+                student_explanation=feynman_explanation,
+                target_audience=target_aud_enum,
+            )
+        )
+
+        # 3. Advance cards in 2357 schedule
+        next_due = now + timedelta(days=2)
+        current_stage = "2357_day1"
+        next_stage = "2357_day3"
+        cards_updated = 0
+
+        if repository is not None:
+            all_cards = repository.get_all_cards(user_id=user_id, folder_id=folder_id)
+            for c in all_cards:
+                c_doc = str(c.get("document_id") or "")
+                c_fold = str(c.get("folder_id") or "")
+                if (document_id and c_doc == str(document_id)) or (not document_id and folder_id and c_fold == str(folder_id)):
+                    c_stage = str(c.get("stage") or "2357_day1")
+                    current_stage = c_stage
+
+                    # Check if card was already advanced / reviewed in this session
+                    c_due = c.get("due")
+                    c_due_dt = None
+                    if c_due:
+                        try:
+                            c_due_dt = datetime.fromisoformat(c_due) if isinstance(c_due, str) else c_due
+                            if c_due_dt.tzinfo is None:
+                                c_due_dt = c_due_dt.replace(tzinfo=timezone.utc)
+                        except Exception:
+                            pass
+
+                    c_last = c.get("last_review")
+                    already_reviewed = False
+                    if c_last:
+                        try:
+                            l_dt = datetime.fromisoformat(c_last) if isinstance(c_last, str) else c_last
+                            if l_dt.tzinfo is None:
+                                l_dt = l_dt.replace(tzinfo=timezone.utc)
+                            if (now - l_dt).total_seconds() < 43200:
+                                already_reviewed = True
+                        except Exception:
+                            pass
+
+                    # If card was already reviewed today or due is in future, preserve its scheduled stage!
+                    if already_reviewed or (c_due_dt and c_due_dt > now + timedelta(minutes=5)):
+                        next_stage = c_stage
+                        if c_due_dt:
+                            next_due = c_due_dt
+                        continue
+
+                    if "day1" in c_stage or "day_1" in c_stage:
+                        n_stage = ScheduleStage.DAY_3
+                        n_days = 2.0
+                    elif "day3" in c_stage or "day_3" in c_stage:
+                        n_stage = ScheduleStage.DAY_5
+                        n_days = 2.0
+                    elif "day5" in c_stage or "day_5" in c_stage:
+                        n_stage = ScheduleStage.DAY_7
+                        n_days = 2.0
+                    else:
+                        n_stage = ScheduleStage.GRADUATED_FSRS
+                        n_days = 7.0
+                    next_stage = n_stage.value
+                    card_due = now + timedelta(days=n_days)
+                    next_due = card_due
+                    repository.update_card_stage(card_id=c["id"], stage=n_stage, due=card_due)
+                    cards_updated += 1
+            is_extra_practice = bool(cards_updated == 0)
+        else:
+            # Standard path: call record_deck_completion to advance in Supabase
+            deck_res = self.record_deck_completion(
+                user_id=user_id,
+                folder_id=folder_id,
+                document_id=document_id,
+                file_name=file_name,
+                cards_reviewed=cards_reviewed,
+            )
+            current_stage = deck_res.get("current_stage", "2357_day1")
+            next_stage = deck_res.get("next_stage", "2357_day3")
+            next_due = deck_res.get("next_review_due", next_due)
+            cards_updated = deck_res.get("cards_completed", cards_reviewed)
+            is_extra_practice = bool(deck_res.get("is_extra_practice", False))
+            if not file_name:
+                resolved_name = deck_res.get("file_name", resolved_name)
+
+        # 4. Words per minute calculation
+        word_count = len(blurting_content.split())
+        wpm = round((word_count / max(blurting_duration_seconds, 1.0)) * 60.0, 1)
+
+        # 5. Persist hybrid session record attached to file
+        feynman_pct = int(round(feynman_eval.completeness_score * 100)) if feynman_eval.completeness_score <= 1.0 else int(round(feynman_eval.completeness_score))
+        recall_passed = bool(blurting_eval.accuracy_score >= 70)
+        feynman_passed = bool(feynman_pct >= 70 and getattr(feynman_eval, "is_sufficient", True))
+
+        session_id = str(uuid.uuid4())
+        session_data = {
+            "session_id": session_id,
+            "user_id": str(user_id),
+            "folder_id": str(folder_id),
+            "document_id": str(document_id) if document_id else None,
+            "file_name": resolved_name,
+            "topic": resolved_topic,
+            "recall_finished": recall_passed,
+            "feynman_finished": feynman_passed,
+            "blurting_duration_seconds": blurting_duration_seconds,
+            "blurting_wpm": wpm,
+            "blurting_accuracy": blurting_eval.accuracy_score,
+            "feynman_score": feynman_pct,
+            "completed_at": now.isoformat(),
+            "next_stage": next_stage,
+            "next_review_due": next_due.isoformat() if hasattr(next_due, "isoformat") else str(next_due),
+            "is_extra_practice": is_extra_practice,
+        }
+        if not hasattr(self, "_hybrid_sessions"):
+            self._hybrid_sessions = {}
+
+        if document_id:
+            self._hybrid_sessions[(str(user_id), str(document_id))] = session_data
+        if resolved_name:
+            self._hybrid_sessions[(str(user_id), resolved_name)] = session_data
+        if folder_id:
+            self._hybrid_sessions[(str(user_id), str(folder_id))] = session_data
+
+        feynman_dict = feynman_eval.model_dump() if hasattr(feynman_eval, "model_dump") else feynman_eval
+
+        stage_label_map = {
+            "2357_day1": "Day 1 (First Review)",
+            "2357_day3": "Day 3 (Second Review)",
+            "2357_day5": "Day 5 (Third Review)",
+            "2357_day7": "Day 7 (Consolidation)",
+            "graduated_fsrs": "FSRS Retention",
+        }
+        display_label = stage_label_map.get(next_stage, next_stage)
+        due_str = next_due.strftime('%B %d, %Y') if hasattr(next_due, "strftime") else str(next_due)
+
+        if is_extra_practice:
+            session_msg = f"Extra practice completed! Your scheduled milestone ({display_label}) remains set for {due_str}. Review on that exact date to advance."
+        else:
+            session_msg = f"Recorded 2357 Day Review completion, Active Recall Dump, and Feynman Synthesis for {resolved_name}."
+
+        return {
+            "status": "success",
+            "session_id": session_id,
+            "file_name": resolved_name,
+            "folder_id": folder_id,
+            "document_id": document_id,
+            "cards_completed": max(cards_reviewed, cards_updated),
+            "completed_at": now,
+            "current_stage": current_stage,
+            "next_stage": next_stage,
+            "next_review_due": next_due,
+            "is_extra_practice": is_extra_practice,
+            "recall_finished": recall_passed,
+            "feynman_finished": feynman_passed,
+            "blurting_metrics": blurting_eval,
+            "feynman_metrics": feynman_dict,
+            "speed_words_per_minute": wpm,
+            "message": session_msg,
+        }
+
+    def record_blurting_completion(
+        self,
+        user_id: UUID,
+        folder_id: Optional[UUID] = None,
+        document_id: Optional[UUID] = None,
+        file_name: Optional[str] = None,
+        topic: Optional[str] = None,
+        duration_seconds: float = 60.0,
+        accuracy_score: int = 0,
+    ) -> None:
+        """Records standalone Blurting Scratchpad completion attached to file/topic."""
+        if not hasattr(self, "_hybrid_sessions"):
+            self._hybrid_sessions = {}
+
+        keys_to_update = []
+        uid_str = str(user_id)
+        if document_id:
+            keys_to_update.append((uid_str, str(document_id)))
+        if file_name:
+            keys_to_update.append((uid_str, file_name))
+        if topic:
+            keys_to_update.append((uid_str, topic))
+            keys_to_update.append((uid_str, topic.lower().strip()))
+        if folder_id:
+            keys_to_update.append((uid_str, str(folder_id)))
+
+        existing_data = {}
+        for k in keys_to_update:
+            if k in self._hybrid_sessions:
+                existing_data = self._hybrid_sessions[k].copy()
+                break
+
+        existing_data.update({
+            "user_id": uid_str,
+            "folder_id": str(folder_id) if folder_id else existing_data.get("folder_id"),
+            "document_id": str(document_id) if document_id else existing_data.get("document_id"),
+            "file_name": file_name or existing_data.get("file_name"),
+            "topic": topic or existing_data.get("topic"),
+            "recall_finished": bool(accuracy_score >= 70),
+            "blurting_duration_seconds": duration_seconds,
+            "blurting_accuracy": accuracy_score,
+            "feynman_finished": existing_data.get("feynman_finished", False),
+            "feynman_score": existing_data.get("feynman_score"),
+        })
+
+        for k in keys_to_update:
+            self._hybrid_sessions[k] = existing_data
+
+    def record_feynman_completion(
+        self,
+        user_id: UUID,
+        folder_id: Optional[UUID] = None,
+        document_id: Optional[UUID] = None,
+        file_name: Optional[str] = None,
+        topic: Optional[str] = None,
+        feynman_score: int = 0,
+    ) -> None:
+        """Records standalone Feynman Explainer completion attached to file/topic."""
+        if not hasattr(self, "_hybrid_sessions"):
+            self._hybrid_sessions = {}
+
+        keys_to_update = []
+        uid_str = str(user_id)
+        if document_id:
+            keys_to_update.append((uid_str, str(document_id)))
+        if file_name:
+            keys_to_update.append((uid_str, file_name))
+        if topic:
+            keys_to_update.append((uid_str, topic))
+            keys_to_update.append((uid_str, topic.lower().strip()))
+        if folder_id:
+            keys_to_update.append((uid_str, str(folder_id)))
+
+        existing_data = {}
+        for k in keys_to_update:
+            if k in self._hybrid_sessions:
+                existing_data = self._hybrid_sessions[k].copy()
+                break
+
+        existing_data.update({
+            "user_id": uid_str,
+            "folder_id": str(folder_id) if folder_id else existing_data.get("folder_id"),
+            "document_id": str(document_id) if document_id else existing_data.get("document_id"),
+            "file_name": file_name or existing_data.get("file_name"),
+            "topic": topic or existing_data.get("topic"),
+            "feynman_finished": bool(feynman_score >= 70),
+            "feynman_score": feynman_score,
+            "recall_finished": existing_data.get("recall_finished", False),
+            "blurting_duration_seconds": existing_data.get("blurting_duration_seconds"),
+            "blurting_accuracy": existing_data.get("blurting_accuracy"),
+        })
+
+        for k in keys_to_update:
+            self._hybrid_sessions[k] = existing_data
 
 
     def update_flashcard_stage(

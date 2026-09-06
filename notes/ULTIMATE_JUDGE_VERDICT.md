@@ -5,6 +5,21 @@
 **Status:** ⏳ Pending Specialist Review on Recent File Edits
 
 ## Outstanding File Edits Pending Judgment
+- `C:\Users\USER\.gemini\antigravity-ide\brain\936898ec-65f2-4baa-b6e6-992dfb16ccf0\walkthrough.md`
+- `frontend\components\DocumentReaderModal.tsx`
+- `frontend\lib\documentReader.ts`
+- `frontend\lib\documentReader.test.ts`
+- `backend\tests\test_document_reader_endpoints.py`
+- `C:\Users\USER\.gemini\antigravity-ide\brain\936898ec-65f2-4baa-b6e6-992dfb16ccf0\implementation_plan.md`
+- `backend\tests\test_concept_coverage_and_deduplication.py`
+- `backend\app\services\deduplicate_cards.py`
+- `C:\Users\USER\.gemini\antigravity-ide\brain\f2dad744-d218-4ed1-baf0-9d21e184ca49\scratch\test_gemini_cards.py`
+- `backend\tests\test_practice_again_milestone_lock.py`
+- `C:\Users\USER\.gemini\antigravity-ide\brain\f2dad744-d218-4ed1-baf0-9d21e184ca49\walkthrough.md`
+- `backend\tests\test_hybrid_review_session.py`
+- `C:\Users\USER\.gemini\antigravity-ide\brain\f2dad744-d218-4ed1-baf0-9d21e184ca49\implementation_plan.md`
+- `C:\Users\USER\.gemini\antigravity-ide\brain\d828df63-b937-43c7-af6b-6212f3a2e221\walkthrough.md`
+- `C:\Users\USER\.gemini\antigravity-ide\brain\d828df63-b937-43c7-af6b-6212f3a2e221\implementation_plan.md`
 - `C:\Users\USER\.gemini\antigravity-ide\brain\f74de6cf-c612-4339-b320-dad5f2d002d3\scratch\run_anki_subagents_test.py`
 - `C:\Users\USER\.gemini\antigravity-ide\brain\f74de6cf-c612-4339-b320-dad5f2d002d3\scratch\check_columns.py`
 - `C:\Users\USER\.gemini\antigravity-ide\brain\f74de6cf-c612-4339-b320-dad5f2d002d3\scratch\test_review_submit.py`

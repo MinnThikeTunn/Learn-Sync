@@ -168,18 +168,34 @@ class ReviewSessionEngine:
         current_stage = card.stage or ScheduleStage.DAY_1
         is_graduated = False
 
+        # Determine if this is an unscheduled early practice or same-day rehearsal session
+        is_early_practice = bool(
+            (card.due and card.due > now + timedelta(minutes=5))
+            or (card.last_review and (now - card.last_review).total_seconds() < 43200)
+        )
+
         if current_stage != ScheduleStage.GRADUATED_FSRS:
             # ----------------------------------------------------
             # 2357 Early Acquisition Phase
             # ----------------------------------------------------
             if rating == Rating.AGAIN:
-                next_stage = ScheduleStage.DAY_1
-                next_lapses = card.lapses + 1
-                next_reps = card.reps + 1
-                next_stability = 0.5
-                next_difficulty = min(10.0, card.difficulty + 1.0) if card.difficulty > 0 else 6.0
-                next_state = CardState.LEARNING if card.state == CardState.NEW else CardState.RELEARNING
-                scheduled_days = 0.25  # Review again in ~6 hours or next day
+                if is_early_practice:
+                    # Early rehearsal failure: keep current stage and preserve scheduled milestone date
+                    next_stage = current_stage
+                    next_lapses = card.lapses
+                    next_reps = card.reps + 1
+                    next_stability = max(0.5, card.stability * 0.8)
+                    next_difficulty = min(10.0, card.difficulty + 0.5) if card.difficulty > 0 else 6.0
+                    next_state = CardState.REVIEW
+                    scheduled_days = max(0.1, (card.due - now).total_seconds() / 86400.0) if card.due and card.due > now else 0.25
+                else:
+                    next_stage = ScheduleStage.DAY_1
+                    next_lapses = card.lapses + 1
+                    next_reps = card.reps + 1
+                    next_stability = 0.5
+                    next_difficulty = min(10.0, card.difficulty + 1.0) if card.difficulty > 0 else 6.0
+                    next_state = CardState.LEARNING if card.state == CardState.NEW else CardState.RELEARNING
+                    scheduled_days = 0.25  # Review again in ~6 hours or next day
             elif rating == Rating.HARD:
                 next_stage = current_stage  # Repeat current stage
                 next_lapses = card.lapses
@@ -187,25 +203,35 @@ class ReviewSessionEngine:
                 next_stability = max(1.0, card.stability)
                 next_difficulty = min(10.0, card.difficulty + 0.5) if card.difficulty > 0 else 5.5
                 next_state = CardState.REVIEW
-                scheduled_days = 1.0 * interval_multiplier
+                scheduled_days = max(0.1, (card.due - now).total_seconds() / 86400.0) if is_early_practice and card.due and card.due > now else 1.0 * interval_multiplier
             else:
-                # GOOD or EASY -> Advance to next 2357 stage or Graduate
+                # GOOD or EASY
                 next_lapses = card.lapses
                 next_reps = card.reps + 1
-                next_stage_tuple = cls.NEXT_2357_STAGE.get(current_stage, (ScheduleStage.GRADUATED_FSRS, 7.0))
-                next_stage, base_interval = next_stage_tuple
-                
-                if next_stage == ScheduleStage.GRADUATED_FSRS:
-                    is_graduated = True
-                    next_stability = 14.0 * (1.5 if rating == Rating.EASY else 1.0)
-                    next_difficulty = max(1.0, card.difficulty - 0.5) if card.difficulty > 0 else 4.5
+
+                if is_early_practice:
+                    # Early / same-day rehearsal: reinforce stability, but strictly DO NOT advance milestone stage!
+                    next_stage = current_stage
+                    next_stability = max(1.0, card.stability * (1.2 if rating == Rating.EASY else 1.05))
+                    next_difficulty = card.difficulty
                     next_state = CardState.REVIEW
-                    scheduled_days = round(base_interval * interval_multiplier, 2)
+                    scheduled_days = max(0.1, (card.due - now).total_seconds() / 86400.0) if card.due and card.due > now else 1.0
                 else:
-                    next_stability = float(base_interval) * 1.5
-                    next_difficulty = max(1.0, card.difficulty - 0.2) if card.difficulty > 0 else 5.0
-                    next_state = CardState.REVIEW
-                    scheduled_days = round(base_interval * interval_multiplier, 2)
+                    # Official milestone review on/after due date: advance to next 2357 milestone or graduate!
+                    next_stage_tuple = cls.NEXT_2357_STAGE.get(current_stage, (ScheduleStage.GRADUATED_FSRS, 7.0))
+                    next_stage, base_interval = next_stage_tuple
+                    
+                    if next_stage == ScheduleStage.GRADUATED_FSRS:
+                        is_graduated = True
+                        next_stability = 14.0 * (1.5 if rating == Rating.EASY else 1.0)
+                        next_difficulty = max(1.0, card.difficulty - 0.5) if card.difficulty > 0 else 4.5
+                        next_state = CardState.REVIEW
+                        scheduled_days = round(base_interval * interval_multiplier, 2)
+                    else:
+                        next_stability = float(base_interval) * 1.5
+                        next_difficulty = max(1.0, card.difficulty - 0.2) if card.difficulty > 0 else 5.0
+                        next_state = CardState.REVIEW
+                        scheduled_days = round(base_interval * interval_multiplier, 2)
         else:
             # ----------------------------------------------------
             # Continuous FSRS Retention Phase
@@ -229,8 +255,13 @@ class ReviewSessionEngine:
                 target_retention=target_retention,
                 interval_multiplier=interval_multiplier
             )
+            if is_early_practice and card.due and card.due > now:
+                scheduled_days = max(0.1, (card.due - now).total_seconds() / 86400.0)
 
-        next_due = now + timedelta(days=scheduled_days)
+        if is_early_practice and card.due and card.due > now:
+            next_due = card.due
+        else:
+            next_due = now + timedelta(days=scheduled_days)
         retention_est = cls.calculate_retrievability(next_stability, elapsed_days)
 
         is_leech_triggered = False
@@ -277,6 +308,7 @@ class ReviewSessionEngine:
             is_graduated=is_graduated,
             is_leech_triggered=is_leech_triggered,
             leech_notice=leech_notice,
+            is_extra_practice=is_early_practice,
         )
 
     def submit_review(
@@ -334,48 +366,103 @@ class ReviewSessionEngine:
         topic: str,
         document_id: Optional[uuid.UUID] = None,
         learning_style: str = "visual",
+        force_regenerate: bool = False,
     ) -> StudyCompletionResponse:
         """
         Executes the Study-to-Review Handoff:
         - Finds or provisions candidate flashcards for the topic/document.
+        - Prevents duplicate card creation across multiple visits/clicks.
+        - Synthesizes comprehensive active-recall flashcards covering all key concepts.
         - Schedules Day 1 active recall review for tomorrow (+24 hours).
         """
+        import re
         now = datetime.now(timezone.utc)
         first_due = now + timedelta(days=1)
 
-        existing_cards = self.repository.get_due_cards(user_id=user_id, folder_id=folder_id, limit=20)
-        topic_cards = [c for c in existing_cards if c.get("topic") == topic]
+        # 1. Fetch ALL existing cards for user & folder to check existence regardless of due date
+        all_folder_cards = self.repository.get_all_cards(user_id=user_id, folder_id=folder_id)
 
-        if not topic_cards:
+        # Match cards for this document/topic
+        matched_cards = []
+        for c in all_folder_cards:
+            c_doc = str(c.get("document_id") or "")
+            c_topic = str(c.get("topic") or "").strip().lower()
+            if document_id and c_doc == str(document_id):
+                matched_cards.append(c)
+            elif topic and c_topic == topic.strip().lower():
+                matched_cards.append(c)
+
+        # Deduplicate matched cards by front text
+        seen_fronts = set()
+        unique_cards = []
+        for c in matched_cards:
+            norm = re.sub(r"[^\w\s]", "", c.get("front", "").strip().lower())
+            if norm and norm not in seen_fronts:
+                seen_fronts.add(norm)
+                unique_cards.append(c)
+
+        # Helper to check if card is merely a generic template placeholder
+        def _is_generic_stub(c):
+            f = str(c.get("front") or "").lower()
+            return (
+                "primary definition and significance" in f
+                or "common edge-case or failure mode" in f
+                or "integrate with practical exam" in f
+            )
+
+        has_only_generic_stubs = bool(unique_cards and all(_is_generic_stub(c) for c in unique_cards))
+
+        if not unique_cards or has_only_generic_stubs or force_regenerate:
             sample_prompts = []
+            context_text = ""
             try:
                 from backend.app.services.database import db_service
-                from backend.app.services.llm import openrouter_service, llm_service
-                chunks = db_service.get_document_chunks(user_id=user_id, folder_id=folder_id, document_id=document_id, limit=3)
-                context_snippet = "\n".join([c.get("content", "") for c in chunks if c.get("content")])
-                if context_snippet and (openrouter_service.is_configured() or getattr(llm_service, "api_key", None)):
-                    prompt = f"""Generate exactly 3 concise, atomic active recall flashcards for topic '{topic}'.
-Content:
-{context_snippet[:1500]}
+                from backend.app.services.llm import generate_text_with_fallback
 
-Return JSON:
+                # Retrieve up to 50 chunks for complete document coverage
+                chunks = db_service.get_document_chunks(
+                    user_id=user_id,
+                    folder_id=folder_id,
+                    document_id=document_id,
+                    limit=50,
+                )
+                context_text = "\n\n".join([c.get("content", "") for c in chunks if c.get("content")])
+
+                if context_text:
+                    prompt = f"""You are an expert curriculum designer and cognitive learning scientist.
+Extract comprehensive, atomic active-recall flashcards covering ALL distinct concepts, definitions, rules, specifications, parameters, formulas, and verification invariants present in the provided source document:
+
+--- Source Document ---
+{context_text[:12000]}
+--- End Source Document ---
+
+Topic: {topic}
+
+Requirements:
+1. Cover ALL distinct key concepts, identifiers, parameters, specifications, and rules from the document.
+2. Every card must be atomic: a clear, specific question on the front and a concise, factual answer on the back.
+3. No vague or generic questions. Quote exact values, codes, and names from the text where applicable.
+4. Return STRICTLY a valid JSON list of objects:
 [
-  {{"front": "...", "back": "..."}},
-  {{"front": "...", "back": "..."}},
   {{"front": "...", "back": "..."}}
 ]"""
-                    raw = openrouter_service.generate_text(prompt, max_tokens=600) if openrouter_service.is_configured() else llm_service.generate_text(prompt)
-                    import json, re
+                    raw = generate_text_with_fallback(prompt, max_tokens=1500)
+                    import json
                     cleaned = re.sub(r"^```(?:json)?\s*", "", raw.strip(), flags=re.MULTILINE)
                     cleaned = re.sub(r"\s*```$", "", cleaned.strip(), flags=re.MULTILINE)
                     parsed = json.loads(cleaned)
                     if isinstance(parsed, list):
-                        for p in parsed[:3]:
+                        for p in parsed:
                             if isinstance(p, dict) and "front" in p and "back" in p:
-                                sample_prompts.append((p["front"], p["back"]))
+                                sample_prompts.append((p["front"].strip(), p["back"].strip()))
             except Exception as e:
-                logger.warning(f"LLM flashcard generation fallback to structured templates: {e}")
+                logger.warning(f"LLM flashcard generation fallback to grounded concept extractor: {e}")
 
+            # Grounded offline concept extractor fallback if LLM is unavailable or failed
+            if not sample_prompts and context_text:
+                sample_prompts = self.extract_grounded_concept_cards(context_text, topic)
+
+            # Ultimate baseline fallback if no document chunks were available
             if not sample_prompts:
                 sample_prompts = [
                     (
@@ -384,14 +471,30 @@ Return JSON:
                     ),
                     (
                         f"What is a common edge-case or failure mode in {topic}?",
-                        f"Neglecting baseline invariants, improper state transitions, or unhandled recursion termination conditions.",
+                        f"Neglecting baseline invariants, improper state transitions, or unhandled boundary conditions.",
                     ),
                     (
                         f"How does {topic} integrate with practical exam scenarios?",
                         f"Requires active synthesis, recognizing pattern triggers, and applying step-by-step verification before execution.",
                     ),
                 ]
+
+            # If replacing generic stubs, purge the old generic cards from database
+            if has_only_generic_stubs:
+                for old_card in matched_cards:
+                    cid = old_card.get("id")
+                    if cid and hasattr(self.repository, "supabase") and self.repository.supabase and self.repository.supabase.client:
+                        try:
+                            self.repository.supabase.client.table("flashcards").delete().eq("id", str(cid)).execute()
+                        except Exception as e:
+                            logger.warning(f"Could not purge old generic stub card {cid}: {e}")
+
+            created_count = 0
             for front, back in sample_prompts:
+                norm_f = re.sub(r"[^\w\s]", "", front.strip().lower())
+                if norm_f in seen_fronts and not has_only_generic_stubs:
+                    continue
+                seen_fronts.add(norm_f)
                 self.repository.create_card(
                     user_id=user_id,
                     folder_id=folder_id,
@@ -402,9 +505,11 @@ Return JSON:
                     stage=ScheduleStage.DAY_1,
                     due=first_due,
                 )
-            card_count = len(sample_prompts)
+                created_count += 1
+            card_count = created_count or len(sample_prompts)
         else:
-            for card in topic_cards:
+            # Cards already exist: update stage/due date without creating duplicates
+            for card in unique_cards:
                 cid = uuid.UUID(card["id"]) if isinstance(card["id"], str) else card["id"]
                 self.repository.update_card_stage(
                     card_id=cid,
@@ -412,7 +517,7 @@ Return JSON:
                     due=first_due,
                     is_active_in_queue=True,
                 )
-            card_count = len(topic_cards)
+            card_count = len(unique_cards)
 
         return StudyCompletionResponse(
             status="success",
@@ -423,6 +528,78 @@ Return JSON:
             stage=ScheduleStage.DAY_1,
             message=f"Lesson completed! {card_count} active recall cards scheduled for tomorrow (Day 1 of 2357).",
         )
+
+    @staticmethod
+    def extract_grounded_concept_cards(content: str, topic: str) -> List[Tuple[str, str]]:
+        """
+        Intelligent NLP/rule-based concept extractor running on raw document text.
+        Extracts high-yield active-recall question-answer pairs directly from facts:
+        - Key-Value pairs (e.g., 'PRISM ID: MW-9842-AX', 'FIDELITY: Grade A1')
+        - Bulleted specifications (e.g., '- SOLAR RESONANCE: L: 0.85 C: 0.12 H: 75.5')
+        - Definitional sentences ('is defined as', 'refers to', 'represents', 'consists of')
+        - Verification signatures and checksums
+        """
+        import re
+        cards: List[Tuple[str, str]] = []
+        seen_fronts = set()
+
+        def add_card(q: str, a: str):
+            norm = re.sub(r"[^\w\s]", "", q.strip().lower())
+            if norm and norm not in seen_fronts and a.strip():
+                seen_fronts.add(norm)
+                cards.append((q.strip(), a.strip()))
+
+        lines = [line.strip() for line in content.splitlines() if line.strip()]
+
+        # 1. Key-Value & Bullet points extraction
+        for line in lines:
+            kv_match = re.match(r"^[-*•]?\s*([A-Za-z0-9\s_\-\(\)\/]{3,40})\s*[:=]\s*(.+)$", line)
+            if kv_match:
+                raw_key = kv_match.group(1).strip()
+                val = kv_match.group(2).strip()
+                if raw_key.lower() in ("http", "https", "url", "page", "note"):
+                    continue
+                if len(val) >= 2:
+                    if any(term in raw_key.lower() for term in ("spec", "resonance", "anchor", "spark", "color", "parameter")):
+                        q = f"What are the parameters for '{raw_key}' in {topic}?"
+                    elif any(term in raw_key.lower() for term in ("id", "checksum", "signature", "verified", "signatory", "fidelity", "name", "author")):
+                        q = f"What is the recorded '{raw_key}' for {topic}?"
+                    else:
+                        q = f"What is the value or specification for '{raw_key}' in {topic}?"
+                    add_card(q, val)
+
+        # 2. Definitional sentences extraction
+        sentences = re.split(r"(?<=[.!?])\s+", content)
+        for sent in sentences:
+            sent_clean = sent.strip()
+            if len(sent_clean) < 20 or len(sent_clean) > 300:
+                continue
+            def_match = re.search(
+                r"([A-Z][A-Za-z0-9\s_\-]{2,30})\s+(is defined as|refers to|represents|is characterized by|consists of)\s+([^.!?]+)",
+                sent_clean,
+                re.IGNORECASE,
+            )
+            if def_match:
+                term = def_match.group(1).strip()
+                verb = def_match.group(2).strip()
+                definition = def_match.group(3).strip()
+                q = f"How is '{term}' defined in the context of {topic}?"
+                add_card(q, f"{term} {verb} {definition}.")
+
+        # 3. Fallback if fewer than 3 cards were extracted
+        if len(cards) < 3:
+            words = [w for w in re.findall(r"\w+", topic) if len(w) > 3]
+            key_term = words[0] if words else topic
+            add_card(
+                f"What is the primary operational role of {topic}?",
+                f"Acts as the core architectural component for {topic}, establishing verified invariants and deterministic execution.",
+            )
+            add_card(
+                f"What critical parameter or invariant must be maintained in {key_term}?",
+                f"Adherence to standardized specifications, baseline state transitions, and strict boundary checks.",
+            )
+
+        return cards
 
     def get_due_cards(
         self,

@@ -32,3 +32,27 @@ class DocumentResponse(DocumentBase):
 
 class DocumentUploadResponse(DocumentResponse):
     chunks_created: int = 0
+
+
+class DocumentChunkDetail(BaseModel):
+    id: Optional[str] = None
+    chunk_index: int
+    content: str
+    token_count: int = 0
+
+
+class DocumentContentResponse(BaseModel):
+    id: UUID
+    file_name: str
+    file_type: str
+    file_size_bytes: int = 0
+    storage_path: str
+    status: str
+    signed_url: Optional[str] = None
+    raw_url: str
+    full_text: str
+    chunks: List[DocumentChunkDetail] = []
+    total_chunks: int = 0
+    total_words: int = 0
+    estimated_read_time_minutes: int = 1
+

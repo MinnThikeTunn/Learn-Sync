@@ -127,7 +127,13 @@ class FeynmanService:
 
         # Calculate completeness score
         base_score = 0.90
-        deductions = (len(missing_concepts) * 0.25) + (len(misconceptions) * 0.35)
+        if len(student_text.split()) < 8:
+            base_score = 0.50
+
+        critical_gaps = [g for g in missing_concepts if g.severity == "critical"]
+        medium_gaps = [g for g in missing_concepts if g.severity != "critical"]
+
+        deductions = (len(critical_gaps) * 0.25) + (len(medium_gaps) * 0.15) + (len(misconceptions) * 0.35)
         completeness_score = max(0.0, min(1.0, round(base_score - deductions, 2)))
 
         is_sufficient = completeness_score >= 0.70 and len([m for m in misconceptions if m.severity == "critical"]) == 0

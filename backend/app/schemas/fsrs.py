@@ -95,6 +95,7 @@ class FlashcardReviewResponse(BaseModel):
     is_graduated: bool = False
     is_leech_triggered: bool = False
     leech_notice: Optional[LeechQuarantineNotice] = None
+    is_extra_practice: bool = False
 
 
 class FlashcardReviewRequest(BaseModel):
@@ -168,6 +169,9 @@ class StudyCompletionResponse(BaseModel):
 
 class BlurtingEvaluationRequest(BaseModel):
     folder_id: Optional[uuid.UUID] = None
+    document_id: Optional[uuid.UUID] = None
+    file_name: Optional[str] = None
+    duration_seconds: Optional[float] = 0.0
     topic: str
     user_recall_text: str = Field(..., min_length=5, description="Student unprompted recall dump")
     reference_content: Optional[str] = None
@@ -208,6 +212,11 @@ class FileReviewStats(BaseModel):
     status: str = "not_started"  # "needs_review" | "up_to_date" | "mastered" | "not_started"
     next_review_due: Optional[datetime] = None
     stage_breakdown: Dict[str, int] = Field(default_factory=dict)
+    recall_finished: bool = False
+    feynman_finished: bool = False
+    last_recall_seconds: Optional[float] = None
+    last_blurting_accuracy: Optional[int] = None
+    last_feynman_score: Optional[float] = None
 
 
 class DeckOverviewResponse(BaseModel):
@@ -237,4 +246,38 @@ class DeckCompletionResponse(BaseModel):
     current_stage: str
     next_stage: str
     next_review_due: datetime
+    is_extra_practice: bool = False
+
+
+class HybridReviewSessionRequest(BaseModel):
+    folder_id: uuid.UUID
+    document_id: Optional[uuid.UUID] = None
+    file_name: Optional[str] = None
+    topic: Optional[str] = None
+    cards_reviewed: int = 0
+    blurting_content: str = Field(..., description="Unprompted raw memory recall dump")
+    blurting_duration_seconds: float = Field(0.0, description="Time taken to dump recall in seconds")
+    feynman_explanation: str = Field(..., description="Simplified 2-3 sentence explanation")
+    target_audience: Optional[str] = Field("beginner", description="Audience level: beginner, child, non_technical, peer")
+    auto_generate_remedial_cards: bool = False
+
+
+class HybridReviewSessionResponse(BaseModel):
+    status: str = "success"
+    session_id: str
+    file_name: str
+    folder_id: uuid.UUID
+    document_id: Optional[uuid.UUID] = None
+    cards_completed: int
+    completed_at: datetime
+    current_stage: str
+    next_stage: str
+    next_review_due: datetime
+    is_extra_practice: bool = False
+    recall_finished: bool = True
+    feynman_finished: bool = True
+    blurting_metrics: BlurtingEvaluationResponse
+    feynman_metrics: Dict[str, Any]
+    speed_words_per_minute: float = 0.0
+    message: str = "Hybrid Active Recall and Feynman Synthesis completed successfully"
 

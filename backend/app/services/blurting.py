@@ -64,24 +64,31 @@ class BlurtingService:
                 f"Edge cases and error-handling conditions",
             ]
 
-        # Analyze presence of expected concepts in student text
+        # Analyze presence of expected concepts in student text with stem matching
         retained: List[str] = []
         missed: List[str] = []
+        recall_words = set(re.findall(r"\w+", recall_lower))
 
         for concept in expected_concepts:
-            concept_keywords = [w.lower() for w in re.findall(r"\w+", concept) if len(w) > 3]
-            matches = sum(1 for kw in concept_keywords if kw in recall_lower)
-            match_ratio = matches / max(1, len(concept_keywords))
-            
-            if match_ratio >= 0.3 or any(kw in recall_lower for kw in concept_keywords[:2]):
+            concept_keywords = [w.lower() for w in re.findall(r"\w+", concept) if len(w) > 2]
+            matches = 0
+            for kw in concept_keywords:
+                stem = kw.rstrip("sedign")
+                if kw in recall_lower:
+                    matches += 1
+                elif stem and len(stem) >= 3 and any(w.startswith(stem) or stem in w for w in recall_words):
+                    matches += 1
+
+            if matches >= 1:
                 retained.append(concept)
             else:
                 missed.append(concept)
 
-        # Word count bonus (length depth)
+        # Word count bonus (length depth) & coverage calculation
         words_count = len(recall_text.split())
-        depth_score = min(30, int(words_count * 0.75))
-        coverage_score = int((len(retained) / max(1, len(expected_concepts))) * 70)
+        depth_score = min(25, int(words_count * 0.8))
+        coverage_ratio = len(retained) / max(1, len(expected_concepts))
+        coverage_score = int(coverage_ratio * 75)
         total_score = min(100, max(10, coverage_score + depth_score))
 
         # Focus recommendations
@@ -101,12 +108,18 @@ class BlurtingService:
                 "then re-test using the Day 1 flashcards tomorrow."
             )
 
-        # Target flashcards for missed points
+        # Target flashcards for missed points (or deep dive if none missed)
         suggested_cards = []
         for m in missed[:3]:
             suggested_cards.append({
                 "front": f"Explain the role of: {m} in {request.topic}",
                 "back": f"{m} ensures correctness and prevents unexpected execution failures.",
+            })
+        if not suggested_cards:
+            target_concept = retained[0] if retained else request.topic
+            suggested_cards.append({
+                "front": f"Deep Dive: How does {target_concept} apply to complex edge cases in {request.topic}?",
+                "back": f"Requires rigorous verification of state transitions, boundary conditions, and invariant preservation.",
             })
 
         return BlurtingEvaluationResponse(

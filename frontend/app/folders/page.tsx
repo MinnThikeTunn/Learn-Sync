@@ -17,11 +17,13 @@ import {
   FileCheck,
   AlertCircle,
   Trash2,
-  BrainCircuit
+  BrainCircuit,
+  Lock
 } from "lucide-react";
 import Link from "next/link";
 import Navbar from "@/components/Navbar";
 import OnboardingModal from "@/components/OnboardingModal";
+import DocumentReaderModal from "@/components/DocumentReaderModal";
 import { useAuth } from "@/context/AuthContext";
 import { getVisibleCourseFolders, formatFolderDisplayName } from "@/lib/virtualFolders";
 
@@ -63,6 +65,7 @@ export default function VirtualFoldersPage() {
   const [selectedCourse, setSelectedCourse] = useState<CourseItem | null>(null);
   const [selectedFolder, setSelectedFolder] = useState<VirtualFolder | null>(null);
   const [documents, setDocuments] = useState<DocumentItem[]>([]);
+  const [readingDoc, setReadingDoc] = useState<DocumentItem | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
   // Upload States
@@ -757,26 +760,45 @@ export default function VirtualFoldersPage() {
                           key={doc.id}
                           className="p-3.5 rounded-2xl bg-white border border-brand-outline-variant hover:border-brand-primary/40 shadow-xs hover:shadow-sm transition-all flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs"
                         >
-                          <div className="flex items-center gap-3 truncate min-w-0">
-                            <div className="w-9 h-9 rounded-xl bg-brand-surface-dim border border-brand-outline-variant flex items-center justify-center flex-shrink-0">
+                          <button
+                            type="button"
+                            onClick={() => setReadingDoc(doc)}
+                            className="flex items-center gap-3 truncate min-w-0 text-left group/doc cursor-pointer bg-transparent border-0 p-0"
+                            title={`Click to read ${doc.file_name}`}
+                          >
+                            <div className="w-9 h-9 rounded-xl bg-brand-surface-dim border border-brand-outline-variant group-hover/doc:border-brand-primary/40 group-hover/doc:bg-brand-primary/5 flex items-center justify-center flex-shrink-0 transition-all">
                               <FileCheck className="w-4 h-4 text-brand-primary" />
                             </div>
                             <div className="truncate">
-                              <h5 className="font-bold text-brand-secondary truncate text-xs">{doc.file_name}</h5>
+                              <h5 className="font-bold text-brand-secondary group-hover/doc:text-brand-primary truncate text-xs transition-colors">
+                                {doc.file_name}
+                              </h5>
                               <span className="text-[11px] text-brand-on-surface-variant font-mono">
                                 {(doc.file_size_bytes / 1024).toFixed(1)} KB • {doc.file_type.split("/").pop()}
                               </span>
                             </div>
-                          </div>
+                          </button>
 
                           <div className="flex items-center gap-2 flex-shrink-0 self-end sm:self-center">
-                            <span className={`px-2 py-0.5 rounded-full text-[10px] font-mono font-bold ${
-                              doc.status === "indexed" 
-                                ? "bg-emerald-100 text-emerald-800" 
-                                : "bg-amber-100 text-amber-800"
+                            <span className={`px-2.5 py-1 rounded-full text-[10px] font-mono font-bold ${
+                              doc.status === "learned"
+                                ? "bg-purple-100 text-purple-800 border border-purple-200"
+                                : doc.status === "indexed" 
+                                ? "bg-emerald-50 text-emerald-700 border border-emerald-200" 
+                                : "bg-amber-50 text-amber-700 border border-amber-200"
                             }`}>
-                              {doc.status}
+                              {doc.status === "learned" ? "Learned • In Review" : "Queued for Learning"}
                             </span>
+
+                            <button
+                              type="button"
+                              onClick={() => setReadingDoc(doc)}
+                              className="px-3 py-1.5 rounded-xl bg-brand-surface-dim hover:bg-brand-primary/10 text-brand-secondary hover:text-brand-primary border border-brand-outline-variant hover:border-brand-primary/30 font-bold text-[11px] transition-all flex items-center gap-1 shadow-2xs cursor-pointer"
+                              title={`Read full document for ${doc.file_name}`}
+                            >
+                              <BookOpen className="w-3 h-3 text-brand-primary" />
+                              <span>Read</span>
+                            </button>
 
                             <Link
                               href={`/study?document_id=${doc.id}&file_name=${encodeURIComponent(doc.file_name)}&folder_id=${selectedFolder?.id || ""}&folder=${encodeURIComponent(activePath)}&topic=${encodeURIComponent(docTopic)}`}
@@ -784,17 +806,27 @@ export default function VirtualFoldersPage() {
                               title={`Study and synthesize ${doc.file_name}`}
                             >
                               <Sparkles className="w-3 h-3" />
-                              <span>Study</span>
+                              <span>{doc.status === "learned" ? "Re-study" : "Study"}</span>
                             </Link>
 
-                            <Link
-                              href={`/review?document_id=${doc.id}&file_name=${encodeURIComponent(doc.file_name)}&folder_id=${selectedFolder?.id || ""}&topic=${encodeURIComponent(docTopic)}`}
-                              className="px-3 py-1.5 rounded-xl bg-purple-50 text-purple-700 hover:bg-purple-100 border border-purple-200 font-bold text-[11px] transition-all flex items-center gap-1 shadow-xs cursor-pointer"
-                              title={`Review flashcard deck for ${doc.file_name}`}
-                            >
-                              <BrainCircuit className="w-3 h-3 text-[#3a10e5]" />
-                              <span>Review</span>
-                            </Link>
+                            {doc.status === "learned" ? (
+                              <Link
+                                href={`/review?document_id=${doc.id}&file_name=${encodeURIComponent(doc.file_name)}&folder_id=${selectedFolder?.id || ""}&topic=${encodeURIComponent(docTopic)}`}
+                                className="px-3 py-1.5 rounded-xl bg-purple-50 text-purple-700 hover:bg-purple-100 border border-purple-200 font-bold text-[11px] transition-all flex items-center gap-1 shadow-xs cursor-pointer"
+                                title={`Review flashcard deck for ${doc.file_name}`}
+                              >
+                                <BrainCircuit className="w-3 h-3 text-[#3a10e5]" />
+                                <span>Review</span>
+                              </Link>
+                            ) : (
+                              <span
+                                className="px-2.5 py-1.5 rounded-xl bg-brand-surface-dim text-brand-on-surface-variant/60 border border-brand-outline-variant/60 font-semibold text-[11px] flex items-center gap-1 cursor-not-allowed select-none"
+                                title="Finish learning this document in the Study tab to queue and unlock Review"
+                              >
+                                <Lock className="w-3 h-3 text-brand-on-surface-variant/50" />
+                                <span>Review (Locked)</span>
+                              </span>
+                            )}
 
                             <button
                               type="button"
@@ -1047,6 +1079,17 @@ export default function VirtualFoldersPage() {
         isOpen={showOnboarding}
         onSave={() => setShowOnboarding(false)}
       />
+
+      {readingDoc && (
+        <DocumentReaderModal
+          documentId={readingDoc.id}
+          fileName={readingDoc.file_name}
+          folderId={selectedFolder?.id}
+          folderPath={activePath}
+          topic={readingDoc.file_name.replace(/\.[^/.]+$/, "").replace(/_/g, " ").replace(/-/g, " ")}
+          onClose={() => setReadingDoc(null)}
+        />
+      )}
     </div>
   );
 }

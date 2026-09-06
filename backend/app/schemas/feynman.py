@@ -67,8 +67,11 @@ class GapAnalysisResult(BaseModel):
 class FeynmanEvaluationRequest(BaseModel):
     user_id: Optional[UUID] = None
     folder_id: Optional[UUID] = None
+    document_id: Optional[UUID] = None
+    file_name: Optional[str] = None
     concept: str = Field(..., min_length=2)
     student_explanation: str = Field(..., min_length=5, description="Student's plain-language explanation")
     kc_id: Optional[UUID] = None
     context_chunks: List[Dict[str, Any]] = Field(default_factory=list)
     auto_generate_flashcards: bool = True
+    target_audience: FeynmanPromptTarget = FeynmanPromptTarget.CHILD

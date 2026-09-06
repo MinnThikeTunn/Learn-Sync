@@ -53,31 +53,34 @@ def test_2357_stage_graduation_flow(fresh_2357_card):
     assert res_d1.scheduled_days == 2.0
     assert res_d1.is_graduated is False
 
-    # Step 2: Review at Day 3 with GOOD -> Advances to Day 5
+    # Step 2: Review at Day 3 with GOOD on its due date -> Advances to Day 5
     res_d3 = SpacedRepetitionService.process_review(
         card=res_d1.card,
         rating=Rating.GOOD,
         workload_mode=WorkloadMode.FREE,
+        review_time=res_d1.card.due,
     )
     assert res_d3.stage == ScheduleStage.DAY_5
     assert res_d3.scheduled_days == 2.0
     assert res_d3.is_graduated is False
 
-    # Step 3: Review at Day 5 with EASY -> Advances to Day 7
+    # Step 3: Review at Day 5 with EASY on its due date -> Advances to Day 7
     res_d5 = SpacedRepetitionService.process_review(
         card=res_d3.card,
         rating=Rating.EASY,
         workload_mode=WorkloadMode.FREE,
+        review_time=res_d3.card.due,
     )
     assert res_d5.stage == ScheduleStage.DAY_7
     assert res_d5.scheduled_days == 2.0
     assert res_d5.is_graduated is False
 
-    # Step 4: Review at Day 7 with GOOD -> Graduates to continuous FSRS!
+    # Step 4: Review at Day 7 with GOOD on its due date -> Graduates to continuous FSRS!
     res_d7 = SpacedRepetitionService.process_review(
         card=res_d5.card,
         rating=Rating.GOOD,
         workload_mode=WorkloadMode.FREE,
+        review_time=res_d5.card.due,
     )
     assert res_d7.stage == ScheduleStage.GRADUATED_FSRS
     assert res_d7.is_graduated is True

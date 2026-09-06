@@ -255,8 +255,11 @@ class SupabaseReviewAdapter(ReviewRepository):
         record = {
             "user_id": str(user_id),
             "folder_id": str(folder_id),
-            "front": front,
-            "back": back,
+            "document_id": str(document_id) if document_id else None,
+            "topic": topic,
+            "stage": stage_str,
+            "front": front.strip(),
+            "back": back.strip(),
             "stability": 0.0,
             "difficulty": 0.0,
             "reps": 0,
@@ -268,19 +271,37 @@ class SupabaseReviewAdapter(ReviewRepository):
         }
         if self.supabase.client:
             try:
+                # Deduplication check: return existing card if identical front exists in this folder
+                existing = (
+                    self.supabase.client.table("flashcards")
+                    .select("*")
+                    .eq("folder_id", str(folder_id))
+                    .eq("front", front.strip())
+                    .execute()
+                )
+                if existing.data and len(existing.data) > 0:
+                    out = existing.data[0]
+                    if not out.get("stage"):
+                        out["stage"] = stage_str
+                    if not out.get("topic"):
+                        out["topic"] = topic
+                    if not out.get("document_id"):
+                        out["document_id"] = str(document_id) if document_id else None
+                    return out
+
                 res = self.supabase.client.table("flashcards").insert(record).execute()
                 if res.data and len(res.data) > 0:
                     out = res.data[0]
-                    out["stage"] = stage_str
-                    out["topic"] = topic
-                    out["document_id"] = str(document_id) if document_id else None
+                    if not out.get("stage"):
+                        out["stage"] = stage_str
+                    if not out.get("topic"):
+                        out["topic"] = topic
+                    if not out.get("document_id"):
+                        out["document_id"] = str(document_id) if document_id else None
                     return out
             except Exception as e:
                 logger.warning(f"Supabase flashcard insert fallback: {e}")
         record["id"] = str(uuid.uuid4())
-        record["stage"] = stage_str
-        record["topic"] = topic
-        record["document_id"] = str(document_id) if document_id else None
         return record
 
     def update_card_stage(
@@ -345,7 +366,8 @@ class InMemoryReviewAdapter(ReviewRepository):
                 self.raw_card_records[str(c.id)] = c.model_dump(mode="json")
 
     def get_card(self, card_id: UUID) -> Optional[FlashcardModel]:
-        card = self.cards.get(card_id)
+        target_uid = card_id if isinstance(card_id, uuid.UUID) else uuid.UUID(str(card_id))
+        card = self.cards.get(target_uid)
         return card.model_copy() if card else None
 
     def save_card_state(
@@ -420,6 +442,14 @@ class InMemoryReviewAdapter(ReviewRepository):
         due: Optional[datetime] = None,
     ) -> Dict[str, Any]:
         now = datetime.now(timezone.utc)
+        # Deduplication check in memory
+        for cid, existing in self.raw_card_records.items():
+            if (
+                str(existing.get("folder_id")) == str(folder_id)
+                and existing.get("front", "").strip() == front.strip()
+            ):
+                return existing
+
         new_id = uuid.uuid4()
         due_date = due or (now + timedelta(days=1))
         model = FlashcardModel(
@@ -454,13 +484,14 @@ class InMemoryReviewAdapter(ReviewRepository):
         due: datetime,
         is_active_in_queue: bool = True,
     ) -> Optional[Dict[str, Any]]:
-        if card_id in self.cards:
-            updated = self.cards[card_id].model_copy(
+        target_uid = card_id if isinstance(card_id, uuid.UUID) else uuid.UUID(str(card_id))
+        if target_uid in self.cards:
+            updated = self.cards[target_uid].model_copy(
                 update={"stage": stage, "due": due, "is_active_in_queue": is_active_in_queue}
             )
-            self.cards[card_id] = updated
-            self.raw_card_records[str(card_id)] = updated.model_dump(mode="json")
-            return self.raw_card_records[str(card_id)]
+            self.cards[target_uid] = updated
+            self.raw_card_records[str(target_uid)] = updated.model_dump(mode="json")
+            return self.raw_card_records[str(target_uid)]
         return None
 
     def get_all_cards(

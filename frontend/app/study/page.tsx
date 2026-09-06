@@ -21,7 +21,8 @@ import {
   ChevronRight,
   AlertCircle,
   Loader2,
-  BrainCircuit
+  BrainCircuit,
+  Lock
 } from "lucide-react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
@@ -32,6 +33,7 @@ import AudioRecapPlayer from "@/components/AudioRecapPlayer";
 import ClinicalSimulationLab from "@/components/ClinicalSimulationLab";
 import ProceduralSequencingLab from "@/components/ProceduralSequencingLab";
 import OnboardingModal from "@/components/OnboardingModal";
+import DocumentReaderModal from "@/components/DocumentReaderModal";
 import { extractMermaidDiagram } from "@/lib/mermaidUtils";
 import { useAuth } from "@/context/AuthContext";
 
@@ -99,6 +101,7 @@ function StudyPageContent() {
   // Database Queue States
   const [documents, setDocuments] = useState<DbStudyDocument[]>([]);
   const [selectedDocId, setSelectedDocId] = useState<string | null>(null);
+  const [readingDoc, setReadingDoc] = useState<DbStudyDocument | null>(null);
   const [isLoadingQueue, setIsLoadingQueue] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedCourseFilter, setSelectedCourseFilter] = useState<string>("all");
@@ -454,6 +457,18 @@ function StudyPageContent() {
                       </div>
 
                       <div className="flex items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setReadingDoc(doc);
+                          }}
+                          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold bg-brand-surface-dim hover:bg-brand-primary/10 text-brand-secondary hover:text-brand-primary transition-all border border-brand-outline-variant hover:border-brand-primary/30 shadow-2xs cursor-pointer"
+                          title={`Read full document for ${doc.file_name}`}
+                        >
+                          <BookOpen className="w-3.5 h-3.5 text-brand-primary" />
+                          <span>Read</span>
+                        </button>
                         <Link
                           href={`/review?folder_id=${doc.folder_id || ""}&document_id=${doc.id}&file_name=${encodeURIComponent(doc.file_name)}&topic=${encodeURIComponent(doc.topic || doc.file_name)}`}
                           onClick={(e) => e.stopPropagation()}
@@ -838,13 +853,13 @@ function StudyPageContent() {
                         <span>{isCompleting ? "Handoff to Review..." : "Complete & Hand Off to Review"}</span>
                       </button>
                       {activeDocument && (
-                        <Link
-                          href={`/review?folder_id=${activeDocument.folder_id || ""}&document_id=${activeDocument.id}&file_name=${encodeURIComponent(activeDocument.file_name)}&topic=${encodeURIComponent(activeTopic)}`}
-                          className="inline-flex items-center gap-2 px-5 py-3 rounded-[24px] bg-white text-brand-secondary border border-brand-outline-variant text-xs sm:text-sm font-bold shadow-xs hover:bg-brand-surface-dim transition-all cursor-pointer"
+                        <div
+                          className="inline-flex items-center gap-2 px-4 py-2.5 rounded-[20px] bg-brand-surface-dim border border-brand-outline-variant text-brand-on-surface-variant text-xs font-semibold select-none"
+                          title="Complete this lesson to queue this topic and unlock Review"
                         >
-                          <BrainCircuit className="w-4 h-4 text-[#3a10e5]" />
-                          <span>Review Flashcards</span>
-                        </Link>
+                          <Lock className="w-3.5 h-3.5 text-brand-on-surface-variant/60" />
+                          <span>Review unlocks upon completion</span>
+                        </div>
                       )}
                     </div>
                   )}
@@ -863,6 +878,17 @@ function StudyPageContent() {
           setShowOnboarding(false);
         }}
       />
+
+      {readingDoc && (
+        <DocumentReaderModal
+          documentId={readingDoc.id}
+          fileName={readingDoc.file_name}
+          folderId={readingDoc.folder_id}
+          folderPath={readingDoc.folder_path}
+          topic={readingDoc.topic}
+          onClose={() => setReadingDoc(null)}
+        />
+      )}
     </div>
   );
 }

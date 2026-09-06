@@ -234,3 +234,40 @@ class OpenRouterService:
 # Default global instances
 llm_service = LLMService()
 openrouter_service = OpenRouterService()
+
+
+def generate_text_with_fallback(prompt: str, max_tokens: Optional[int] = None) -> str:
+    """
+    Executes text generation using primary provider (gemini or openrouter)
+    with immediate seamless failover to secondary provider if available.
+    """
+    provider = (settings.LLM_PROVIDER or "gemini").lower()
+    last_err = None
+
+    if provider == "gemini":
+        if settings.GEMINI_API_KEY:
+            try:
+                return llm_service.generate_text(prompt, max_tokens=max_tokens)
+            except Exception as e:
+                last_err = e
+        if openrouter_service.is_configured():
+            try:
+                return openrouter_service.generate_text(prompt, max_tokens=max_tokens)
+            except Exception as e:
+                last_err = e
+    else:
+        if openrouter_service.is_configured():
+            try:
+                return openrouter_service.generate_text(prompt, max_tokens=max_tokens)
+            except Exception as e:
+                last_err = e
+        if settings.GEMINI_API_KEY:
+            try:
+                return llm_service.generate_text(prompt, max_tokens=max_tokens)
+            except Exception as e:
+                last_err = e
+
+    if last_err:
+        raise last_err
+    raise RuntimeError("No LLM provider is configured.")
+
