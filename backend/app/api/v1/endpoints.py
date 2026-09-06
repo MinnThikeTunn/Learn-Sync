@@ -639,6 +639,16 @@ def sync_google_calendar(
     return {"synced_count": len(saved), "events": saved}
 
 
+@router.get("/events")
+def get_events_list(
+    limit: int = Query(15),
+    current_user: UUID = Depends(get_current_user),
+):
+    """Retrieves list of academic calendar events and deadlines for the student."""
+    from backend.app.services.database import db_service
+    return db_service.get_all_events(user_id=current_user, limit=limit)
+
+
 @router.get("/workload/live", response_model=WorkloadScoreResponse)
 def get_live_workload(
     days_ahead: int = Query(3),

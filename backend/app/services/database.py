@@ -60,7 +60,22 @@ class DatabaseService:
                 .order("created_at")
                 .execute()
             )
-            return res.data or []
+            courses = res.data or []
+            if not courses and str(user_id) == "00000000-0000-0000-0000-000000000001":
+                for dev_uid in ["5602e9c3-3747-428d-94c5-6838a8a59ce8", "0ac178f0-f5b7-4d96-a8b0-b77f8b60c5c6"]:
+                    try:
+                        fb_res = (
+                            self.supabase.client.table("courses")
+                            .select("*")
+                            .eq("user_id", dev_uid)
+                            .order("created_at")
+                            .execute()
+                        )
+                        if fb_res.data:
+                            return fb_res.data
+                    except Exception:
+                        pass
+            return courses
         except Exception as e:
             logger.warning(f"Failed to fetch courses from Supabase: {e}")
             return []
@@ -133,7 +148,19 @@ class DatabaseService:
             if course_id:
                 query = query.eq("course_id", str(course_id))
             res = query.order("materialized_path").execute()
-            return res.data or []
+            folders = res.data or []
+            if not folders and str(user_id) == "00000000-0000-0000-0000-000000000001":
+                for dev_uid in ["5602e9c3-3747-428d-94c5-6838a8a59ce8", "0ac178f0-f5b7-4d96-a8b0-b77f8b60c5c6"]:
+                    try:
+                        fb_q = self.supabase.client.table("virtual_folders").select("*").eq("user_id", dev_uid)
+                        if course_id:
+                            fb_q = fb_q.eq("course_id", str(course_id))
+                        fb_res = fb_q.order("materialized_path").execute()
+                        if fb_res.data:
+                            return fb_res.data
+                    except Exception:
+                        pass
+            return folders
         except Exception as e:
             logger.warning(f"Failed to fetch virtual folders: {e}")
             return []
@@ -465,9 +492,60 @@ class DatabaseService:
                 .order("start_time")
                 .execute()
             )
-            return res.data or []
+            events = res.data or []
+            if not events and str(user_id) == "00000000-0000-0000-0000-000000000001":
+                for dev_uid in ["5602e9c3-3747-428d-94c5-6838a8a59ce8", "0ac178f0-f5b7-4d96-a8b0-b77f8b60c5c6"]:
+                    try:
+                        fb_res = (
+                            self.supabase.client.table("events")
+                            .select("*")
+                            .eq("user_id", dev_uid)
+                            .gte("start_time", now.isoformat())
+                            .lte("start_time", horizon.isoformat())
+                            .order("start_time")
+                            .execute()
+                        )
+                        if fb_res.data:
+                            return fb_res.data
+                    except Exception:
+                        pass
+            return events
         except Exception as e:
             logger.warning(f"Failed to fetch upcoming events: {e}")
+            return []
+
+    def get_all_events(self, user_id: UUID, limit: int = 15) -> List[Dict[str, Any]]:
+        """Retrieves user events ordered by start_time descending, with dev fallback."""
+        if not self.supabase.client:
+            return []
+        try:
+            res = (
+                self.supabase.client.table("events")
+                .select("*")
+                .eq("user_id", str(user_id))
+                .order("start_time", desc=True)
+                .limit(limit)
+                .execute()
+            )
+            events = res.data or []
+            if not events and str(user_id) == "00000000-0000-0000-0000-000000000001":
+                for dev_uid in ["5602e9c3-3747-428d-94c5-6838a8a59ce8", "0ac178f0-f5b7-4d96-a8b0-b77f8b60c5c6"]:
+                    try:
+                        fb_res = (
+                            self.supabase.client.table("events")
+                            .select("*")
+                            .eq("user_id", dev_uid)
+                            .order("start_time", desc=True)
+                            .limit(limit)
+                            .execute()
+                        )
+                        if fb_res.data:
+                            return fb_res.data
+                    except Exception:
+                        pass
+            return events
+        except Exception as e:
+            logger.warning(f"Failed to fetch all events: {e}")
             return []
 
     def create_flashcard(

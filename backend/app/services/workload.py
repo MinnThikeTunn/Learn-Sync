@@ -123,6 +123,10 @@ class WorkloadEngine:
             previous_mode=request.previous_mode,
         )
 
+        critical_titles = [e.title for e in active_events if e.effective_weight >= 1.5]
+        if not critical_titles and active_events:
+            critical_titles = [e.title for e in active_events[:3]]
+
         response = WorkloadScoreResponse(
             user_id=request.user_id,
             score=score,
@@ -132,6 +136,7 @@ class WorkloadEngine:
             is_spike=is_spike,
             lookahead_days=request.lookahead_days,
             active_event_count=count,
+            critical_events=critical_titles,
             evaluated_at=ref_time,
             raw_sum=raw_sum,
         )

@@ -12,8 +12,8 @@ interface WorkloadGaugeProps {
 export default function WorkloadGauge({
   score,
   mode,
-  activeEventCount = 3,
-  criticalEvents = ["CS101 Midterm Exam", "Algorithms Project 2"],
+  activeEventCount = 0,
+  criticalEvents = [],
 }: WorkloadGaugeProps) {
   const percentage = Math.min(100, Math.max(0, Math.round(score * 100)));
   const isBusy = mode === "busy";
@@ -106,18 +106,29 @@ export default function WorkloadGauge({
           <div className="p-4 rounded-[20px] bg-brand-surface-dim border border-brand-outline-variant min-w-[220px]">
             <div className="flex items-center justify-between mb-2">
               <span className="text-[11px] font-bold uppercase text-brand-on-surface-variant">Upcoming Deadlines</span>
-              <span className="text-xs font-bold font-mono text-brand-primary px-2 py-0.5 rounded bg-brand-primary/10 border border-brand-primary/20">
-                {activeEventCount} active
+              <span className={`text-xs font-bold font-mono px-2 py-0.5 rounded border ${
+                activeEventCount > 0
+                  ? "text-brand-primary bg-brand-primary/10 border-brand-primary/20"
+                  : "text-emerald-700 bg-emerald-50 border-emerald-200"
+              }`}>
+                {activeEventCount > 0 ? `${activeEventCount} active` : "None acute"}
               </span>
             </div>
-            <ul className="space-y-1.5">
-              {criticalEvents.slice(0, 2).map((ev, i) => (
-                <li key={i} className="text-xs text-brand-secondary flex items-center gap-1.5 truncate">
-                  <Flame className="w-3.5 h-3.5 text-brand-tertiary-dim flex-shrink-0" />
-                  <span className="truncate font-medium">{ev}</span>
-                </li>
-              ))}
-            </ul>
+            {criticalEvents && criticalEvents.length > 0 ? (
+              <ul className="space-y-1.5">
+                {criticalEvents.slice(0, 3).map((ev, i) => (
+                  <li key={i} className="text-xs text-brand-secondary flex items-center gap-1.5 truncate">
+                    <Flame className="w-3.5 h-3.5 text-brand-tertiary-dim flex-shrink-0" />
+                    <span className="truncate font-medium">{ev}</span>
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <div className="text-xs text-emerald-700 flex items-center gap-1.5 py-1">
+                <ShieldCheck className="w-4 h-4 text-emerald-600 flex-shrink-0" />
+                <span className="font-medium">Optimal cognitive bandwidth</span>
+              </div>
+            )}
           </div>
         </div>
       </div>

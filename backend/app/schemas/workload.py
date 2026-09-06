@@ -85,6 +85,7 @@ class WorkloadScoreResponse(BaseModel):
     is_spike: bool
     lookahead_days: float
     active_event_count: int
+    critical_events: List[str] = Field(default_factory=list)
     evaluated_at: datetime
     raw_sum: float
 

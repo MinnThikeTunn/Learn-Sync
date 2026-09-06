@@ -5,6 +5,8 @@
 **Status:** ⏳ Pending Specialist Review on Recent File Edits
 
 ## Outstanding File Edits Pending Judgment
+- `C:\Users\USER\.gemini\antigravity-ide\brain\2c2c0c6f-1414-4c5a-8e57-6a572e11e1b9\walkthrough.md`
+- `C:\Users\USER\.gemini\antigravity-ide\brain\2c2c0c6f-1414-4c5a-8e57-6a572e11e1b9\implementation_plan.md`
 - `C:\Users\USER\.gemini\antigravity-ide\brain\936898ec-65f2-4baa-b6e6-992dfb16ccf0\walkthrough.md`
 - `frontend\components\DocumentReaderModal.tsx`
 - `frontend\lib\documentReader.ts`
