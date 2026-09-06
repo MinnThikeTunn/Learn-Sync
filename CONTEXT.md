@@ -88,4 +88,34 @@ _Avoid_: Lesson view, reading time, study page
 An active recall revision engagement in the Review tab where a student tests retention on due Knowledge Components via 2357 Flashcards, Blurting, or Feynman exercises.
 _Avoid_: Revision page, quiz time, test tab
 
+**Academic Discipline**:
+The subject matter domain (such as Medicine, Computer Science, Law, Life Sciences, Business, or Humanities) associated with a Course or Virtual Folder, scoping the generation of discipline-appropriate learning artifacts.
+_Avoid_: Subject tag, department name, major category
 
+**Mind Map**:
+A radial and hierarchical semantic diagram visually organizing concepts, anatomical structures, or legal doctrines outward from a central Knowledge Component into categorized branches.
+_Avoid_: Bubble chart, spider graph, concept drawing
+
+**Process Flow**:
+A sequential, chronological diagram capturing algorithmic state transitions, clinical protocols, or causal pipelines.
+_Avoid_: Step chart, flowchart drawing, pipeline map
+
+**Interactive Simulation**:
+A kinesthetic learning engagement providing active manipulation and immediate causal feedback tailored to the course discipline, encompassing Clinical Case Simulations, Procedural Sequencing Labs, Decision Dilemmas, and Interactive Code Labs.
+_Avoid_: Quiz game, multiple choice test, interactive widget
+
+**Critical Decision Micro-Task**:
+A rapid, single-action kinesthetic challenge served in Busy Mode (W(t) > 0.70) delivering instant tactile feedback in under 60 seconds without multi-step cognitive overhead.
+_Avoid_: Quick question, flash quiz, bite-sized test
+
+**Learner Agent Orchestrator**:
+The central coordinator managing autonomous learner subagents across all VARK modalities. Implements the Spawn-Multi-Subagent Pattern to spawn dedicated agents or concurrently fan out across all learner styles.
+_Avoid_: Master agent, parent bot, controller script
+
+**Learner Subagent**:
+A dedicated autonomous agent specializing in a single VARK modality (Visual, Auditory, Read/Write, Kinesthetic) and discipline context, using OpenRouter free-tier LLMs with deterministic template fallback.
+_Avoid_: Worker node, child process, sub-bot
+
+**Concurrent Multi-Agent Fan-Out**:
+A parallel architectural execution pattern where the orchestrator dispatches and executes multiple specialized subagents simultaneously via a thread pool to generate complete multi-modal learning packages.
+_Avoid_: Batch processing, bulk generator, loop execution

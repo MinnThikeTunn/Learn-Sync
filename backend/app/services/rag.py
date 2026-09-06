@@ -1,15 +1,26 @@
+import re
 from typing import Any, Dict, List, Optional, Tuple
 from uuid import UUID, uuid4
 from datetime import datetime, timezone
 
 from backend.app.schemas.adaptive import (
+    AcademicDiscipline,
     LearningStyle,
     StudyArtifact,
     StudyArtifactMetadata,
     StudyArtifactType,
     GroundingCitation,
+    KinestheticSimulationPayload,
+    SimulationStep,
+    InteractiveChoice,
+    SequencingItem,
 )
 from backend.app.schemas.workload import WorkloadMode
+from backend.app.services.learner_agents import (
+    learner_agent_orchestrator,
+    AgentSynthesisContext,
+    VisualLearnerAgent,
+)
 
 
 class AdaptiveLearningEngine:
@@ -73,6 +84,88 @@ class AdaptiveLearningEngine:
         return citations
 
     @classmethod
+    def detect_academic_discipline(
+        cls,
+        chunks: List[Dict[str, Any]],
+        topic: str
+    ) -> AcademicDiscipline:
+        """
+        Classifies course subject matter into academic disciplines from text chunks and topic.
+        """
+        text = (topic + " " + " ".join(c.get("content", "") for c in chunks)).lower()
+
+        medical_kw = [
+            "patient", "diagnosis", "symptom", "clinical", "disease", "treatment",
+            "ecg", "vitals", "pharmacology", "dosage", "myocardial", "infarction",
+            "cardiology", "neurology", "doctor", "nursing", "hospital", "biomarker",
+            "troponin", "hypertension", "edema", "acute", "syndrome", "pathology",
+            "anatomy", "physiology", "therapy", "cardiac", "stroke", "respiratory"
+        ]
+        bio_kw = [
+            "enzyme", "metabolism", "cellular", "protein", "dna", "rna", "organism",
+            "pathway", "reaction", "mitosis", "photosynthesis", "genetics", "substrate",
+            "assay", "biology", "chemistry", "microbiology", "titration", "bacteria",
+            "membrane", "molecule", "cellular respiration", "amino acid", "glycolysis"
+        ]
+        law_kw = [
+            "statute", "precedent", "court", "plaintiff", "defendant", "liability",
+            "tort", "contract", "constitutional", "jurisdiction", "doctrine", "clause",
+            "appeal", "legal", "ruling", "judge", "amendment", "prosecution", "negligence"
+        ]
+        biz_kw = [
+            "revenue", "margin", "ebitda", "market", "customer", "valuation",
+            "equity", "asset", "financial", "economics", "pricing", "competitor",
+            "balance sheet", "cash flow", "portfolio", "roi"
+        ]
+        cs_kw = [
+            "code", "function", "algorithm", "class", "recursion", "complexity",
+            "database", "array", "pointer", "syntax", "python", "compiler", "runtime",
+            "binary", "tree", "graph", "sorting", "stack", "queue", "api", "software",
+            "object-oriented", "data structure", "memory leak", "heap"
+        ]
+
+        scores = {
+            AcademicDiscipline.MEDICINE: sum(1 for w in medical_kw if w in text),
+            AcademicDiscipline.LIFE_SCIENCES: sum(1 for w in bio_kw if w in text),
+            AcademicDiscipline.LAW: sum(1 for w in law_kw if w in text),
+            AcademicDiscipline.BUSINESS: sum(1 for w in biz_kw if w in text),
+            AcademicDiscipline.COMPUTER_SCIENCE: sum(1 for w in cs_kw if w in text),
+        }
+
+        best_discipline, max_score = max(scores.items(), key=lambda x: x[1])
+        if max_score > 0:
+            return best_discipline
+        return AcademicDiscipline.GENERAL
+
+    @classmethod
+    def compile_concept_tree_to_mermaid_mindmap(cls, tree: Dict[str, Any]) -> str:
+        """
+        Deterministically compiles a hierarchical concept dictionary into 100% valid
+        Mermaid mindmap syntax without risking LLM syntax hallucinations.
+        """
+        def clean(label: str) -> str:
+            cleaned = re.sub(r'[\(\)\[\]\"\{\}:;`]', '', str(label)).strip()
+            return cleaned or "Concept"
+
+        root_label = clean(tree.get("root", "Core Concept"))
+        lines = [
+            "```mermaid",
+            "mindmap",
+            f"  root(({root_label}))",
+        ]
+
+        branches = tree.get("branches", [])
+        for branch in branches:
+            branch_title = clean(branch.get("title", "Branch"))
+            lines.append(f"    {branch_title}")
+            for sub in branch.get("sub_branches", []):
+                sub_title = clean(sub)
+                lines.append(f"      {sub_title}")
+
+        lines.append("```")
+        return "\n".join(lines)
+
+    @classmethod
     def generate_artifact(
         cls,
         folder_id: UUID,
@@ -83,7 +176,9 @@ class AdaptiveLearningEngine:
         custom_instructions: Optional[str] = None
     ) -> StudyArtifact:
         """
-        Synthesizes personalized study artifacts across the 8 matrix combinations (4 styles x 2 modes).
+        Synthesizes personalized study artifacts across multi-discipline modalities
+        (Mind Maps for Visual, Universal Interactive Simulations for Kinesthetic,
+        Socratic Podcasts for Auditory, and Comprehensive Notes for Read/Write).
         """
         confidence, is_low = cls.evaluate_retrieval_confidence(chunks, topic)
         citations = cls.extract_citations(chunks, topic) if not is_low else []
@@ -105,144 +200,69 @@ class AdaptiveLearningEngine:
                 warning_message="Retrieval confidence below threshold. Unsupported facts omitted to prevent hallucinations."
             )
 
+        discipline = cls.detect_academic_discipline(chunks, topic)
         context_summary = " ".join(c.get("content", "") for c in chunks[:3])
 
-        # 1. Visual Style
-        if style == LearningStyle.VISUAL:
-            if mode == WorkloadMode.FREE:
-                content = (
-                    f"```mermaid\n"
-                    f"flowchart TD\n"
-                    f"    A[\"{topic} Core Concept\"] --> B[\"Step 1: Base Foundations\"]\n"
-                    f"    B --> C{{\"Evaluation Condition\"}}\n"
-                    f"    C -->|Valid| D[\"Process Execution\"]\n"
-                    f"    C -->|Recursive Step| B\n"
-                    f"    D --> E[\"Mastery State Reached\"]\n"
-                    f"```\n\n"
-                    f"### Visual Flow Breakdown for {topic}\n"
-                    f"- Context: {context_summary[:200]}..."
-                )
-                metadata = StudyArtifactMetadata(
-                    diagram_syntax="mermaid",
-                    estimated_time_minutes=8.0
-                )
-                art_type = StudyArtifactType.DIAGRAM
-            else:  # Busy Mode
-                content = (
-                    f"```mermaid\n"
-                    f"graph LR\n"
-                    f"    A[\"{topic} Quick Spec\"] --> B[\"Key Primitive\"]\n"
-                    f"    B --> C[\"Result: 80/20 Outcome\"]\n"
-                    f"```\n\n"
-                    f"**Quick Cheat-Sheet**: Core primitive rule for {topic} in under 60 seconds."
-                )
-                metadata = StudyArtifactMetadata(
-                    diagram_syntax="mermaid",
-                    estimated_time_minutes=2.0
-                )
-                art_type = StudyArtifactType.CHEAT_SHEET
-
-        # 2. Auditory Style
-        elif style == LearningStyle.AUDITORY:
-            if mode == WorkloadMode.FREE:
-                content = (
-                    f"**Socratic Dialogue: Exploring {topic}**\n\n"
-                    f"**Professor**: Let's examine how {topic} operates. What happens when the input boundary is reached?\n\n"
-                    f"**Student**: The system must check the base case before making the next recursive call to avoid stack overflow.\n\n"
-                    f"**Professor**: Exactly. Notice how the source material notes: '{context_summary[:100]}...'\n\n"
-                    f"**Student**: So every branch terminates safely with bounded memory."
-                )
-                metadata = StudyArtifactMetadata(
-                    audio_duration_seconds=180,
-                    speakers=["Professor", "Student"],
-                    estimated_time_minutes=5.0
-                )
-                art_type = StudyArtifactType.AUDIO_SCRIPT
-            else:  # Busy Mode
-                content = (
-                    f"**30-Second Rapid Recap: {topic}**\n"
-                    f"- Rule 1: High-yield anchor for {topic}.\n"
-                    f"- Rule 2: Memory boundary constraint.\n"
-                    f"- Rule 3: Typical exam pitfall to avoid."
-                )
-                metadata = StudyArtifactMetadata(
-                    audio_duration_seconds=30,
-                    speakers=["Narrator"],
-                    estimated_time_minutes=1.0
-                )
-                art_type = StudyArtifactType.MICRO_RECAP
-
-        # 3. Read/Write Style
-        elif style == LearningStyle.READ_WRITE:
-            if mode == WorkloadMode.FREE:
-                content = (
-                    f"# Comprehensive Study Guide: {topic}\n\n"
-                    f"## 1. Conceptual Overview\n"
-                    f"{context_summary[:300]}...\n\n"
-                    f"## 2. Mathematical & Algorithmic Formulation\n"
-                    f"The underlying mechanics follow formal state transitions with bounded invariants.\n\n"
-                    f"## 3. Practical Implications & Edge Cases\n"
-                    f"Key considerations when applying {topic} under production constraints."
-                )
-                metadata = StudyArtifactMetadata(estimated_time_minutes=10.0)
-                art_type = StudyArtifactType.SUMMARY_NOTE
-            else:  # Busy Mode
-                content = (
-                    f"### 3-Bullet Pareto Takeaways: {topic}\n"
-                    f"• **Definition**: Core primitive principle derived from course materials.\n"
-                    f"• **Key Formula/Rule**: Direct invariant governing {topic}.\n"
-                    f"• **Exam Focus**: Primary pitfall tested in upcoming assessments."
-                )
-                metadata = StudyArtifactMetadata(estimated_time_minutes=2.0)
-                art_type = StudyArtifactType.SUMMARY_NOTE
-
-        # 4. Kinesthetic Style
-        elif style == LearningStyle.KINESTHETIC:
-            if mode == WorkloadMode.FREE:
-                content = (
-                    f"### Interactive Code Lab: {topic}\n\n"
-                    f"```python\n"
-                    f"def solve_{topic.lower().replace(' ', '_')}(data: list[int]) -> int:\n"
-                    f"    \"\"\"\n"
-                    f"    Implement {topic} according to module specifications.\n"
-                    f"    \"\"\"\n"
-                    f"    # TODO: Implement base case and transformation\n"
-                    f"    pass\n"
-                    f"```\n\n"
-                    f"#### Test Cases:\n"
-                    f"Run `pytest` against test suite to verify your implementation."
-                )
-                metadata = StudyArtifactMetadata(
-                    programming_language="python",
-                    test_cases=[{"input": [1, 2, 3], "expected": 6}],
-                    estimated_time_minutes=15.0
-                )
-                art_type = StudyArtifactType.CODE_LAB
-            else:  # Busy Mode
-                content = (
-                    f"### 90-Second Micro-Snippet Fix: {topic}\n\n"
-                    f"```python\n"
-                    f"# Fix the 1-line bug in {topic} logic:\n"
-                    f"def fast_check(n: int) -> bool:\n"
-                    f"    return n > 0 and (n & (n - 1)) == 0  # Is power of 2\n"
-                    f"```"
-                )
-                metadata = StudyArtifactMetadata(
-                    programming_language="python",
-                    estimated_time_minutes=1.5
-                )
-                art_type = StudyArtifactType.MICRO_SNIPPET
-
-        return StudyArtifact(
+        agent_context = AgentSynthesisContext(
             folder_id=folder_id,
             topic=topic,
-            learning_style=style,
+            discipline=discipline,
             workload_mode=mode,
-            artifact_type=art_type,
-            content=content,
-            metadata=metadata,
+            context_summary=context_summary,
             citations=citations,
             source_chunk_ids=source_chunk_ids,
-            confidence_score=confidence,
-            is_low_confidence=False
+            confidence=confidence,
+            learning_style=style,
         )
+
+        return learner_agent_orchestrator.spawn_agent(style, agent_context)
+
+    @classmethod
+    def generate_all_artifacts(
+        cls,
+        folder_id: UUID,
+        mode: WorkloadMode,
+        topic: str,
+        chunks: List[Dict[str, Any]],
+        custom_instructions: Optional[str] = None
+    ) -> Dict[LearningStyle, StudyArtifact]:
+        """
+        Multi-agent parallel fan-out: Spawns subagents for all 4 VARK modalities simultaneously
+        via the LearnerAgentOrchestrator.
+        """
+        confidence, is_low = cls.evaluate_retrieval_confidence(chunks, topic)
+        citations = cls.extract_citations(chunks, topic) if not is_low else []
+        source_chunk_ids = [c.chunk_id for c in citations]
+
+        if is_low:
+            fallback_art = StudyArtifact(
+                folder_id=folder_id,
+                topic=topic,
+                learning_style=LearningStyle.READ_WRITE,
+                workload_mode=mode,
+                artifact_type=StudyArtifactType.SUMMARY_NOTE,
+                content=f"Insufficient course material found in this folder for topic '{topic}'. Please upload course documents.",
+                metadata=StudyArtifactMetadata(estimated_time_minutes=1.0),
+                citations=[],
+                source_chunk_ids=[],
+                confidence_score=confidence,
+                is_low_confidence=True,
+                warning_message="Retrieval confidence below threshold. Unsupported facts omitted to prevent hallucinations."
+            )
+            return {s: fallback_art for s in LearningStyle}
+
+        discipline = cls.detect_academic_discipline(chunks, topic)
+        context_summary = " ".join(c.get("content", "") for c in chunks[:3])
+
+        agent_context = AgentSynthesisContext(
+            folder_id=folder_id,
+            topic=topic,
+            discipline=discipline,
+            workload_mode=mode,
+            context_summary=context_summary,
+            citations=citations,
+            source_chunk_ids=source_chunk_ids,
+            confidence=confidence,
+        )
+
+        return learner_agent_orchestrator.spawn_all_subagents(agent_context)

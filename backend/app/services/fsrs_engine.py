@@ -17,14 +17,14 @@ from backend.app.schemas.fsrs import (
     StudyCompletionResponse,
 )
 from backend.app.schemas.workload import WorkloadMode
-from backend.app.services.database import db_service
+from backend.app.services.review_repository import ReviewRepository, supabase_review_adapter
 
 logger = logging.getLogger(__name__)
 
 
-class SpacedRepetitionService:
+class ReviewSessionEngine:
     """
-    Hybrid 2357-FSRS Spaced Repetition Service dynamically coupled to Workload Score W(t).
+    Review Session Module powered by the Hybrid 2357-FSRS Engine.
     
     Two-Phase Learning Cycle:
     1. Early Acquisition (2357 Method):
@@ -58,6 +58,9 @@ class SpacedRepetitionService:
         ScheduleStage.DAY_5: (ScheduleStage.DAY_7, 2.0),
         ScheduleStage.DAY_7: (ScheduleStage.GRADUATED_FSRS, 7.0),
     }
+
+    def __init__(self, repository: Optional[ReviewRepository] = None):
+        self.repository = repository or supabase_review_adapter
 
     @classmethod
     def resolve_workload_parameters(
@@ -276,45 +279,120 @@ class SpacedRepetitionService:
             leech_notice=leech_notice,
         )
 
-    @classmethod
-    def complete_study_lesson(
-        cls,
+    def submit_review(
+        self,
+        user_id: uuid.UUID,
+        card_id: Optional[uuid.UUID] = None,
+        rating: Rating = Rating.GOOD,
+        card: Optional[FlashcardModel] = None,
+        review_time: Optional[datetime] = None,
+        workload_mode: Optional[WorkloadMode] = None,
+        workload_score: Optional[float] = None,
+    ) -> FlashcardReviewResponse:
+        """
+        Deep unified interface for reviewing a flashcard:
+        1. Resolves card via parameter or persistence adapter
+        2. Computes 2357 milestone or continuous FSRS transition with W(t) elasticity
+        3. Identifies and isolates Leech cards (lapses >= 4)
+        4. Persists updated card state via repository adapter
+        5. Logs immutable review audit record via repository adapter
+        """
+        target_card = card
+        if target_card is None and card_id is not None:
+            target_card = self.repository.get_card(card_id)
+
+        if target_card is None:
+            raise ValueError(f"Flashcard '{card_id}' not found and no card model provided.")
+
+        response = self.process_review(
+            card=target_card,
+            rating=rating,
+            review_time=review_time,
+            workload_mode=workload_mode,
+            workload_score=workload_score,
+        )
+
+        try:
+            self.repository.save_card_state(response.card, stage=response.stage)
+            self.repository.log_review(
+                user_id=user_id,
+                flashcard_id=target_card.id,
+                rating=int(rating),
+                state=int(response.card.state),
+                scheduled_days=response.scheduled_days,
+                elapsed_days=response.elapsed_days,
+            )
+        except Exception as e:
+            logger.warning(f"Persistence warning during review submit for card {target_card.id}: {e}")
+
+        return response
+
+    def schedule_handoff(
+        self,
         user_id: uuid.UUID,
         folder_id: uuid.UUID,
         topic: str,
         document_id: Optional[uuid.UUID] = None,
-        learning_style: str = "visual"
+        learning_style: str = "visual",
     ) -> StudyCompletionResponse:
         """
         Executes the Study-to-Review Handoff:
         - Finds or provisions candidate flashcards for the topic/document.
-        - Schedules their Day 1 active recall review for tomorrow (+24 hours).
+        - Schedules Day 1 active recall review for tomorrow (+24 hours).
         """
         now = datetime.now(timezone.utc)
         first_due = now + timedelta(days=1)
 
-        # Retrieve or auto-generate starter cards for the topic
-        existing_cards = db_service.get_due_flashcards(user_id=user_id, folder_id=folder_id, limit=20)
+        existing_cards = self.repository.get_due_cards(user_id=user_id, folder_id=folder_id, limit=20)
         topic_cards = [c for c in existing_cards if c.get("topic") == topic]
 
         if not topic_cards:
-            # Generate default high-yield concept cards
-            sample_prompts = [
-                (
-                    f"What is the primary definition and significance of {topic}?",
-                    f"{topic} establishes the foundational conceptual architecture for this module, enabling modular and low-friction problem solving.",
-                ),
-                (
-                    f"What is a common edge-case or failure mode in {topic}?",
-                    f"Neglecting baseline invariants, improper state transitions, or unhandled recursion termination conditions.",
-                ),
-                (
-                    f"How does {topic} integrate with practical exam scenarios?",
-                    f"Requires active synthesis, recognizing pattern triggers, and applying step-by-step verification before execution.",
-                ),
-            ]
+            sample_prompts = []
+            try:
+                from backend.app.services.database import db_service
+                from backend.app.services.llm import openrouter_service, llm_service
+                chunks = db_service.get_document_chunks(user_id=user_id, folder_id=folder_id, document_id=document_id, limit=3)
+                context_snippet = "\n".join([c.get("content", "") for c in chunks if c.get("content")])
+                if context_snippet and (openrouter_service.is_configured() or getattr(llm_service, "api_key", None)):
+                    prompt = f"""Generate exactly 3 concise, atomic active recall flashcards for topic '{topic}'.
+Content:
+{context_snippet[:1500]}
+
+Return JSON:
+[
+  {{"front": "...", "back": "..."}},
+  {{"front": "...", "back": "..."}},
+  {{"front": "...", "back": "..."}}
+]"""
+                    raw = openrouter_service.generate_text(prompt, max_tokens=600) if openrouter_service.is_configured() else llm_service.generate_text(prompt)
+                    import json, re
+                    cleaned = re.sub(r"^```(?:json)?\s*", "", raw.strip(), flags=re.MULTILINE)
+                    cleaned = re.sub(r"\s*```$", "", cleaned.strip(), flags=re.MULTILINE)
+                    parsed = json.loads(cleaned)
+                    if isinstance(parsed, list):
+                        for p in parsed[:3]:
+                            if isinstance(p, dict) and "front" in p and "back" in p:
+                                sample_prompts.append((p["front"], p["back"]))
+            except Exception as e:
+                logger.warning(f"LLM flashcard generation fallback to structured templates: {e}")
+
+            if not sample_prompts:
+                sample_prompts = [
+                    (
+                        f"What is the primary definition and significance of {topic}?",
+                        f"{topic} establishes the foundational conceptual architecture for this module, enabling modular and low-friction problem solving.",
+                    ),
+                    (
+                        f"What is a common edge-case or failure mode in {topic}?",
+                        f"Neglecting baseline invariants, improper state transitions, or unhandled recursion termination conditions.",
+                    ),
+                    (
+                        f"How does {topic} integrate with practical exam scenarios?",
+                        f"Requires active synthesis, recognizing pattern triggers, and applying step-by-step verification before execution.",
+                    ),
+                ]
             for front, back in sample_prompts:
-                db_service.create_flashcard(
+                self.repository.create_card(
                     user_id=user_id,
                     folder_id=folder_id,
                     front=front,
@@ -326,13 +404,13 @@ class SpacedRepetitionService:
                 )
             card_count = len(sample_prompts)
         else:
-            # Activate existing cards
             for card in topic_cards:
-                db_service.update_flashcard_stage(
-                    flashcard_id=uuid.UUID(card["id"]),
+                cid = uuid.UUID(card["id"]) if isinstance(card["id"], str) else card["id"]
+                self.repository.update_card_stage(
+                    card_id=cid,
                     stage=ScheduleStage.DAY_1,
                     due=first_due,
-                    is_active_in_queue=True
+                    is_active_in_queue=True,
                 )
             card_count = len(topic_cards)
 
@@ -344,6 +422,34 @@ class SpacedRepetitionService:
             first_due_date=first_due,
             stage=ScheduleStage.DAY_1,
             message=f"Lesson completed! {card_count} active recall cards scheduled for tomorrow (Day 1 of 2357).",
+        )
+
+    def get_due_cards(
+        self,
+        user_id: uuid.UUID,
+        folder_id: Optional[uuid.UUID] = None,
+        stage: Optional[str] = None,
+        limit: int = 30,
+    ) -> List[Dict[str, Any]]:
+        """Queries active due flashcards via repository adapter."""
+        return self.repository.get_due_cards(user_id=user_id, folder_id=folder_id, stage=stage, limit=limit)
+
+    @classmethod
+    def complete_study_lesson(
+        cls,
+        user_id: uuid.UUID,
+        folder_id: uuid.UUID,
+        topic: str,
+        document_id: Optional[uuid.UUID] = None,
+        learning_style: str = "visual",
+    ) -> StudyCompletionResponse:
+        """Legacy classmethod adapter delegating to review_session_engine.schedule_handoff."""
+        return review_session_engine.schedule_handoff(
+            user_id=user_id,
+            folder_id=folder_id,
+            topic=topic,
+            document_id=document_id,
+            learning_style=learning_style,
         )
 
     @classmethod
@@ -369,3 +475,9 @@ class SpacedRepetitionService:
             kc_title=kc_title,
             prompt_instructions=instructions,
         )
+
+
+# Canonical singleton instances and backward-compatible aliases
+review_session_engine = ReviewSessionEngine()
+SpacedRepetitionService = ReviewSessionEngine
+

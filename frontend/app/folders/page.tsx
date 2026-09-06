@@ -16,12 +16,14 @@ import {
   X,
   FileCheck,
   AlertCircle,
-  Trash2
+  Trash2,
+  BrainCircuit
 } from "lucide-react";
 import Link from "next/link";
 import Navbar from "@/components/Navbar";
 import OnboardingModal from "@/components/OnboardingModal";
 import { useAuth } from "@/context/AuthContext";
+import { getVisibleCourseFolders, formatFolderDisplayName } from "@/lib/virtualFolders";
 
 interface CourseItem {
   id: string;
@@ -146,7 +148,7 @@ export default function VirtualFoldersPage() {
             : loadedCourses[0];
           setSelectedCourse(currentCourse);
 
-          const courseFolders = loadedFolders.filter(f => f.course_id === currentCourse.id);
+          const courseFolders = getVisibleCourseFolders(loadedFolders, currentCourse.id);
           if (courseFolders.length > 0) {
             const currentFolder = selectedFolder && courseFolders.find(f => f.id === selectedFolder.id)
               ? selectedFolder
@@ -193,10 +195,13 @@ export default function VirtualFoldersPage() {
   // When course selection changes
   const handleSelectCourse = (course: CourseItem) => {
     setSelectedCourse(course);
-    const courseFolders = folders.filter(f => f.course_id === course.id);
+    const courseFolders = getVisibleCourseFolders(folders, course.id);
     if (courseFolders.length > 0) {
-      setSelectedFolder(courseFolders[0]);
-      loadDocuments(courseFolders[0].id);
+      const currentFolder = selectedFolder && courseFolders.find(f => f.id === selectedFolder.id)
+        ? selectedFolder
+        : courseFolders[0];
+      setSelectedFolder(currentFolder);
+      loadDocuments(currentFolder.id);
     } else {
       setSelectedFolder(null);
       setDocuments([]);
@@ -252,9 +257,9 @@ export default function VirtualFoldersPage() {
     setIsSubmittingFolder(true);
     setFolderError(null);
     try {
-      const parentFolder = selectedFolder?.depth === 0 ? selectedFolder : folders.find(f => f.course_id === selectedCourse.id && f.depth === 0);
-      const parentPath = parentFolder?.materialized_path || `/${selectedCourse.code}`;
-      const parentDepth = parentFolder?.depth ?? 0;
+      const parentFolder = selectedFolder && selectedFolder.course_id === selectedCourse.id ? selectedFolder : null;
+      const parentPath = parentFolder ? parentFolder.materialized_path : `/${selectedCourse.code}`;
+      const parentDepth = parentFolder ? parentFolder.depth : 0;
 
       const res = await apiFetch("/folders", {
         method: "POST",
@@ -550,8 +555,7 @@ export default function VirtualFoldersPage() {
             <div className="space-y-4">
               {courses.map((course) => {
                 const isCurrentCourse = selectedCourse?.id === course.id;
-                const courseFolders = folders.filter((f) => f.course_id === course.id);
-                const subfolders = courseFolders.filter((f) => f.depth > 0);
+                const courseFolders = getVisibleCourseFolders(folders, course.id);
 
                 return (
                   <div 
@@ -581,7 +585,7 @@ export default function VirtualFoldersPage() {
                       </div>
                       <div className="flex items-center gap-2">
                         <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-white border border-brand-outline-variant text-brand-on-surface-variant">
-                          {subfolders.length} subfolders
+                          {courseFolders.length} {courseFolders.length === 1 ? "folder" : "folders"}
                         </span>
                         <button
                           type="button"
@@ -599,13 +603,14 @@ export default function VirtualFoldersPage() {
                     </div>
 
                     {/* Subfolders Tree */}
-                    {subfolders.length > 0 && (
+                    {courseFolders.length > 0 && (
                       <div className="mt-2.5 pl-3.5 space-y-1 border-l-2 border-brand-outline-variant/70 ml-1.5">
-                        {subfolders.map((sub) => {
+                        {courseFolders.map((sub) => {
                           const isSelected = selectedFolder?.id === sub.id;
                           return (
                             <div
                               key={sub.id}
+                              style={{ paddingLeft: sub.depth > 0 ? `${Math.min(sub.depth * 10, 30)}px` : undefined }}
                               className={`w-full flex items-center justify-between p-2 rounded-xl text-xs font-mono transition-all group ${
                                 isSelected
                                   ? "bg-brand-primary text-white font-bold shadow-sm"
@@ -619,12 +624,12 @@ export default function VirtualFoldersPage() {
                                 }}
                                 className="flex items-center gap-2 truncate flex-1 text-left"
                               >
-                                <ChevronRight className={`w-3 h-3 ${isSelected ? "text-white" : "text-brand-on-surface-variant"}`} />
-                                <span className="truncate">{sub.name.replace(/_/g, " ")}</span>
+                                <ChevronRight className={`w-3 h-3 flex-shrink-0 ${isSelected ? "text-white" : "text-brand-on-surface-variant"}`} />
+                                <span className="truncate">{formatFolderDisplayName(sub, course.code)}</span>
                               </button>
                               <div className="flex items-center gap-1.5 flex-shrink-0">
                                 <span className={`text-[10px] px-1.5 py-0.5 rounded ${isSelected ? "bg-white/20 text-white" : "bg-brand-surface-dim text-brand-on-surface-variant"}`}>
-                                  /{sub.materialized_path.split("/").pop()}
+                                  /{sub.materialized_path.split("/").filter(Boolean).pop() || sub.name}
                                 </span>
                                 <button
                                   type="button"
@@ -640,7 +645,7 @@ export default function VirtualFoldersPage() {
                                       : "text-brand-on-surface-variant/60 hover:text-rose-600 hover:bg-rose-50"
                                   }`}
                                 >
-                                  <Trash2 className="w-3 h-3" />
+                                  <Trash2 className="w-3.5 h-3.5" />
                                 </button>
                               </div>
                             </div>
@@ -664,7 +669,7 @@ export default function VirtualFoldersPage() {
                   <h3 className="text-xl font-black text-brand-secondary tracking-tight">{activePath}</h3>
                 </div>
                 <div className="flex items-center gap-2">
-                  {selectedFolder && selectedFolder.depth > 0 && (
+                  {selectedFolder && (
                     <button
                       onClick={() => handleDeleteFolder(selectedFolder)}
                       disabled={deletingFolderId === selectedFolder.id}
@@ -677,8 +682,8 @@ export default function VirtualFoldersPage() {
                   )}
                   {selectedFolder && (
                     <Link
-                      href={`/study?folder=${encodeURIComponent(activePath)}&topic=${encodeURIComponent(activeTopic)}`}
-                      className="px-4 py-2 rounded-xl bg-brand-primary hover:bg-brand-primary/90 text-white text-xs font-bold transition-all shadow-sm flex items-center gap-1.5"
+                      href={`/study?folder=${encodeURIComponent(activePath)}&folder_id=${selectedFolder.id}${documents.length > 0 ? `&document_id=${documents[0].id}&file_name=${encodeURIComponent(documents[0].file_name)}` : ""}&topic=${encodeURIComponent(activeTopic)}`}
+                      className="px-4 py-2 rounded-xl bg-brand-primary hover:bg-brand-primary/90 text-white text-xs font-bold transition-all shadow-sm flex items-center gap-1.5 cursor-pointer"
                     >
                       <Sparkles className="w-3.5 h-3.5" />
                       <span>Synthesize Grounded Artifact</span>
@@ -745,43 +750,65 @@ export default function VirtualFoldersPage() {
                   </div>
                 ) : (
                   <div className="space-y-2">
-                    {documents.map((doc) => (
-                      <div
-                        key={doc.id}
-                        className="p-3 rounded-2xl bg-white border border-brand-outline-variant shadow-sm flex items-center justify-between gap-3 text-xs"
-                      >
-                        <div className="flex items-center gap-3 truncate">
-                          <div className="w-8 h-8 rounded-lg bg-brand-surface-dim border border-brand-outline-variant flex items-center justify-center flex-shrink-0">
-                            <FileCheck className="w-4 h-4 text-brand-primary" />
+                    {documents.map((doc) => {
+                      const docTopic = doc.file_name.replace(/\.[^/.]+$/, "").replace(/_/g, " ").replace(/-/g, " ");
+                      return (
+                        <div
+                          key={doc.id}
+                          className="p-3.5 rounded-2xl bg-white border border-brand-outline-variant hover:border-brand-primary/40 shadow-xs hover:shadow-sm transition-all flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs"
+                        >
+                          <div className="flex items-center gap-3 truncate min-w-0">
+                            <div className="w-9 h-9 rounded-xl bg-brand-surface-dim border border-brand-outline-variant flex items-center justify-center flex-shrink-0">
+                              <FileCheck className="w-4 h-4 text-brand-primary" />
+                            </div>
+                            <div className="truncate">
+                              <h5 className="font-bold text-brand-secondary truncate text-xs">{doc.file_name}</h5>
+                              <span className="text-[11px] text-brand-on-surface-variant font-mono">
+                                {(doc.file_size_bytes / 1024).toFixed(1)} KB • {doc.file_type.split("/").pop()}
+                              </span>
+                            </div>
                           </div>
-                          <div className="truncate">
-                            <h5 className="font-bold text-brand-secondary truncate">{doc.file_name}</h5>
-                            <span className="text-[11px] text-brand-on-surface-variant">
-                              {(doc.file_size_bytes / 1024).toFixed(1)} KB • {doc.file_type.split("/").pop()}
-                            </span>
-                          </div>
-                        </div>
 
-                        <div className="flex items-center gap-2 flex-shrink-0">
-                          <span className={`px-2 py-0.5 rounded-full text-[10px] font-mono font-bold ${
-                            doc.status === "indexed" 
-                              ? "bg-emerald-100 text-emerald-800" 
-                              : "bg-amber-100 text-amber-800"
-                          }`}>
-                            {doc.status}
-                          </span>
-                          <button
-                            type="button"
-                            onClick={() => handleDeleteDocument(doc)}
-                            disabled={deletingDocId === doc.id}
-                            title="Delete document from Supabase"
-                            className="p-1.5 rounded-lg text-brand-on-surface-variant hover:text-rose-600 hover:bg-rose-50 transition-colors"
-                          >
-                            <Trash2 className="w-3.5 h-3.5" />
-                          </button>
+                          <div className="flex items-center gap-2 flex-shrink-0 self-end sm:self-center">
+                            <span className={`px-2 py-0.5 rounded-full text-[10px] font-mono font-bold ${
+                              doc.status === "indexed" 
+                                ? "bg-emerald-100 text-emerald-800" 
+                                : "bg-amber-100 text-amber-800"
+                            }`}>
+                              {doc.status}
+                            </span>
+
+                            <Link
+                              href={`/study?document_id=${doc.id}&file_name=${encodeURIComponent(doc.file_name)}&folder_id=${selectedFolder?.id || ""}&folder=${encodeURIComponent(activePath)}&topic=${encodeURIComponent(docTopic)}`}
+                              className="px-3 py-1.5 rounded-xl bg-brand-primary hover:bg-brand-primary/90 text-white font-bold text-[11px] transition-all flex items-center gap-1 shadow-xs cursor-pointer"
+                              title={`Study and synthesize ${doc.file_name}`}
+                            >
+                              <Sparkles className="w-3 h-3" />
+                              <span>Study</span>
+                            </Link>
+
+                            <Link
+                              href={`/review?document_id=${doc.id}&file_name=${encodeURIComponent(doc.file_name)}&folder_id=${selectedFolder?.id || ""}&topic=${encodeURIComponent(docTopic)}`}
+                              className="px-3 py-1.5 rounded-xl bg-purple-50 text-purple-700 hover:bg-purple-100 border border-purple-200 font-bold text-[11px] transition-all flex items-center gap-1 shadow-xs cursor-pointer"
+                              title={`Review flashcard deck for ${doc.file_name}`}
+                            >
+                              <BrainCircuit className="w-3 h-3 text-[#3a10e5]" />
+                              <span>Review</span>
+                            </Link>
+
+                            <button
+                              type="button"
+                              onClick={() => handleDeleteDocument(doc)}
+                              disabled={deletingDocId === doc.id}
+                              title="Delete document from Supabase"
+                              className="p-1.5 rounded-lg text-brand-on-surface-variant hover:text-rose-600 hover:bg-rose-50 transition-colors"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
                         </div>
-                      </div>
-                    ))}
+                      );
+                    })}
                   </div>
                 )}
               </div>

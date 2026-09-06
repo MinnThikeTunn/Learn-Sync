@@ -5,6 +5,45 @@
 **Status:** ⏳ Pending Specialist Review on Recent File Edits
 
 ## Outstanding File Edits Pending Judgment
+- `C:\Users\USER\.gemini\antigravity-ide\brain\f74de6cf-c612-4339-b320-dad5f2d002d3\scratch\run_anki_subagents_test.py`
+- `C:\Users\USER\.gemini\antigravity-ide\brain\f74de6cf-c612-4339-b320-dad5f2d002d3\scratch\check_columns.py`
+- `C:\Users\USER\.gemini\antigravity-ide\brain\f74de6cf-c612-4339-b320-dad5f2d002d3\scratch\test_review_submit.py`
+- `C:\Users\USER\.gemini\antigravity-ide\brain\f74de6cf-c612-4339-b320-dad5f2d002d3\scratch\test_study_queue.py`
+- `C:\Users\USER\.gemini\antigravity-ide\brain\f74de6cf-c612-4339-b320-dad5f2d002d3\scratch\test_due_cards.py`
+- `C:\Users\USER\.gemini\antigravity-ide\brain\f74de6cf-c612-4339-b320-dad5f2d002d3\walkthrough.md`
+- `C:\Users\USER\.gemini\antigravity-ide\brain\f74de6cf-c612-4339-b320-dad5f2d002d3\scratch\check_users.py`
+- `C:\Users\USER\.gemini\antigravity-ide\brain\f74de6cf-c612-4339-b320-dad5f2d002d3\scratch\test_live_overview.py`
+- `backend\tests\test_deck_overview.py`
+- `C:\Users\USER\.gemini\antigravity-ide\brain\f74de6cf-c612-4339-b320-dad5f2d002d3\scratch\detailed_card_report.py`
+- `C:\Users\USER\.gemini\antigravity-ide\brain\f74de6cf-c612-4339-b320-dad5f2d002d3\scratch\check_flashcards.py`
+- `C:\Users\USER\.gemini\antigravity-ide\brain\f74de6cf-c612-4339-b320-dad5f2d002d3\implementation_plan.md`
+- `C:\Users\USER\.gemini\antigravity-ide\brain\b1e349dc-c941-4772-97e1-b5282923aa21\walkthrough.md`
+- `backend\tests\test_review_e2e_lifecycle.py`
+- `C:\Users\USER\.gemini\antigravity-ide\brain\b1e349dc-c941-4772-97e1-b5282923aa21\implementation_plan.md`
+- `frontend\lib\mermaidUtils.ts`
+- `frontend\lib\mermaidUtils.test.ts`
+- `docs\adr\0004-agent-orchestrator-spawn-multi-subagents.md`
+- `backend\tests\test_openrouter_agents.py`
+- `backend\app\services\learner_agents\__init__.py`
+- `backend\app\services\learner_agents\orchestrator.py`
+- `backend\app\services\learner_agents\kinesthetic_agent.py`
+- `backend\app\services\learner_agents\read_write_agent.py`
+- `backend\app\services\learner_agents\auditory_agent.py`
+- `backend\app\services\learner_agents\visual_agent.py`
+- `backend\app\services\learner_agents\base.py`
+- `C:\Users\USER\.gemini\antigravity-ide\brain\c1867daf-573b-4142-8173-19b8c090b066\walkthrough.md`
+- `frontend\components\ProceduralSequencingLab.tsx`
+- `frontend\components\ClinicalSimulationLab.tsx`
+- `backend\tests\test_multi_discipline_adaptive.py`
+- `C:\Users\USER\.gemini\antigravity-ide\brain\c1867daf-573b-4142-8173-19b8c090b066\implementation_plan.md`
+- `docs\adr\0003-multi-discipline-adaptive-modalities.md`
+- `frontend\lib\virtualFolders.test.ts`
+- `frontend\lib\virtualFolders.ts`
+- `C:\Users\USER\.gemini\antigravity-ide\brain\7df3afdd-d205-4fb0-ba0a-949b224d6581\walkthrough.md`
+- `backend\tests\test_review_session_deep.py`
+- `backend\app\services\review_repository.py`
+- `C:\Users\USER\.gemini\antigravity-ide\brain\7df3afdd-d205-4fb0-ba0a-949b224d6581\implementation_plan.md`
+- `C:\Users\USER\AppData\Local\Temp\architecture-review-20260905-092300.html`
 - `C:\Users\USER\.gemini\antigravity-ide\brain\db3821b5-b357-4721-9647-08666474bf06\walkthrough.md`
 - `C:\Users\USER\.gemini\antigravity-ide\brain\db3821b5-b357-4721-9647-08666474bf06\implementation_plan.md`
 - `frontend\tailwind.config.js`

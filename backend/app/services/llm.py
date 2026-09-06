@@ -134,5 +134,103 @@ class LLMService:
         return schema.model_validate(data)
 
 
-# Default global instance
+class OpenRouterUnavailableError(Exception):
+    """Raised when OpenRouter API is unreachable or no API key is provided."""
+    pass
+
+
+class OpenRouterService:
+    """
+    OpenRouter API client supporting OpenRouter free-tier models:
+    - meta-llama/llama-3.3-70b-instruct:free
+    - google/gemini-2.0-flash-exp:free
+    - deepseek/deepseek-r1:free
+    Includes rate-limiting, error handling, and graceful fallback.
+    """
+
+    def __init__(
+        self,
+        api_key: Optional[str] = None,
+        model_name: Optional[str] = None,
+        base_url: Optional[str] = None,
+        max_prompt_tokens: int = 8000,
+        max_rpm: int = 15,
+        timeout: float = 20.0,
+    ):
+        self.api_key = api_key if api_key is not None else settings.OPENROUTER_API_KEY
+        self.model_name = model_name or settings.OPENROUTER_MODEL
+        self.base_url = (base_url or settings.OPENROUTER_BASE_URL).rstrip("/")
+        self.max_prompt_tokens = max_prompt_tokens
+        self.timeout = timeout
+        self.rate_limiter = RateLimiter(max_rpm=max_rpm)
+
+    def is_configured(self) -> bool:
+        """Returns True if an OpenRouter API key is present."""
+        return bool(self.api_key and self.api_key.strip())
+
+    def generate_text(self, prompt: str, max_tokens: Optional[int] = None) -> str:
+        """
+        Sends chat completion request to OpenRouter.
+        Raises OpenRouterUnavailableError if unconfigured or unreachable.
+        """
+        if not self.is_configured():
+            raise OpenRouterUnavailableError("OpenRouter API key is not configured.")
+
+        import httpx
+
+        self.rate_limiter.acquire(blocking=True)
+
+        url = f"{self.base_url}/chat/completions"
+        headers = {
+            "Authorization": f"Bearer {self.api_key.strip()}",
+            "HTTP-Referer": "http://localhost:3000",
+            "X-Title": "LearnSync AI",
+            "Content-Type": "application/json",
+        }
+        payload = {
+            "model": self.model_name,
+            "messages": [
+                {"role": "user", "content": prompt}
+            ],
+        }
+        if max_tokens:
+            payload["max_tokens"] = max_tokens
+
+        try:
+            with httpx.Client(timeout=self.timeout) as client:
+                response = client.post(url, headers=headers, json=payload)
+                if response.status_code != 200:
+                    raise OpenRouterUnavailableError(
+                        f"OpenRouter API error {response.status_code}: {response.text}"
+                    )
+                data = response.json()
+                choices = data.get("choices", [])
+                if not choices:
+                    raise OpenRouterUnavailableError("No choices returned in OpenRouter response.")
+                content = choices[0].get("message", {}).get("content", "")
+                return content.strip()
+        except OpenRouterUnavailableError:
+            raise
+        except Exception as e:
+            raise OpenRouterUnavailableError(f"OpenRouter request failed: {str(e)}") from e
+
+    def generate_structured_json(self, prompt: str, schema: Type[T]) -> T:
+        """Enforces structured JSON extraction matching Pydantic schema."""
+        system_instruction = (
+            f"\nYou must return ONLY a raw, valid JSON object matching this schema:\n"
+            f"{json.dumps(schema.model_json_schema(), indent=2)}\n"
+            f"Do not include any Markdown formatting, backticks, or extra commentary."
+        )
+        full_prompt = f"{prompt}\n\n{system_instruction}"
+        raw_text = self.generate_text(full_prompt)
+
+        cleaned = re.sub(r"^```(?:json)?\s*", "", raw_text.strip(), flags=re.MULTILINE)
+        cleaned = re.sub(r"\s*```$", "", cleaned.strip(), flags=re.MULTILINE)
+
+        data = json.loads(cleaned)
+        return schema.model_validate(data)
+
+
+# Default global instances
 llm_service = LLMService()
+openrouter_service = OpenRouterService()

@@ -140,11 +140,13 @@ class FeynmanService:
 
         # Generate remedial flashcards if requested and gaps exist
         if request.auto_generate_flashcards:
+            target_user_id = request.user_id or uuid.UUID("00000000-0000-0000-0000-000000000001")
+            target_folder_id = request.folder_id or uuid.UUID("00000000-0000-0000-0000-000000000002")
             for gap in missing_concepts:
                 generated_cards.append(
                     FlashcardCreate(
-                        user_id=request.user_id,
-                        folder_id=request.folder_id,
+                        user_id=target_user_id,
+                        folder_id=target_folder_id,
                         kc_id=request.kc_id,
                         front=f"In {concept}, why is the {gap.missing_aspect} essential?",
                         back=f"It ensures the recursive process terminates cleanly without causing call stack overflow.",
@@ -154,8 +156,8 @@ class FeynmanService:
             for misc in misconceptions:
                 generated_cards.append(
                     FlashcardCreate(
-                        user_id=request.user_id,
-                        folder_id=request.folder_id,
+                        user_id=target_user_id,
+                        folder_id=target_folder_id,
                         kc_id=request.kc_id,
                         front=f"True/False: {misc.student_claim}",
                         back=f"False. {misc.correct_fact} ({misc.explanation})",

@@ -23,11 +23,18 @@ class Settings(BaseSettings):
     GOOGLE_CLIENT_SECRET: Optional[str] = None
     GOOGLE_REDIRECT_URI: str = "http://localhost:3000/api/auth/callback/google"
     
-    # AI / LLM Settings (Gemini 3 Flash / 1.5 Flash)
+    # AI / LLM Settings (Gemini & OpenRouter Free Tier)
     GEMINI_API_KEY: Optional[str] = None
     GEMINI_MODEL: str = "gemini-1.5-flash"  # Default fast model, works with standard Gemini API
     GEMINI_MAX_TOKENS: int = 2048
     GEMINI_TEMPERATURE: float = 0.2
+    
+    # OpenRouter Free Tier Settings
+    OPENROUTER_API_KEY: Optional[str] = None
+    OPENROUTER_MODEL: str = "meta-llama/llama-3.3-70b-instruct:free"
+    OPENROUTER_BASE_URL: str = "https://openrouter.ai/api/v1"
+    LLM_PROVIDER: str = "openrouter"  # "openrouter" | "gemini" | "deterministic"
+    
     EMBEDDING_DIMENSION: int = 1536
     RRF_K_PARAMETER: int = 60
     

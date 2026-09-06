@@ -2,7 +2,7 @@ import uuid
 from datetime import datetime
 from enum import IntEnum, Enum
 from typing import Optional, Dict, Any, List
-from pydantic import BaseModel, Field, ConfigDict
+from pydantic import BaseModel, Field, ConfigDict, model_validator
 from backend.app.schemas.workload import WorkloadMode
 
 
@@ -105,6 +105,14 @@ class FlashcardReviewRequest(BaseModel):
     workload_mode: Optional[WorkloadMode] = None
     workload_score: Optional[float] = Field(default=None, ge=0.0, le=1.0)
 
+    @model_validator(mode="after")
+    def check_card_identifier(self) -> "FlashcardReviewRequest":
+        if not self.card_id and not self.card:
+            raise ValueError("Either 'card_id' or 'card' payload must be provided for review")
+        if not self.card_id and self.card:
+            self.card_id = self.card.id
+        return self
+
 
 class FlashcardRewriteRequest(BaseModel):
     card_id: uuid.UUID
@@ -172,3 +180,61 @@ class BlurtingEvaluationResponse(BaseModel):
     missed_nuances: List[str] = Field(default_factory=list, description="Important facts missed or forgotten")
     recommended_focus: str = Field(..., description="Actionable focus for the next 2357 revision")
     suggested_cards: List[Dict[str, str]] = Field(default_factory=list, description="Targeted flashcards for missed points")
+
+
+# =====================================================================
+# Anki-Style Deck Overview & File Completion Tracking Schemas
+# =====================================================================
+
+class FileReviewStats(BaseModel):
+    document_id: Optional[uuid.UUID] = None
+    file_name: str
+    folder_id: uuid.UUID
+    folder_path: str = "/root"
+    course_code: Optional[str] = "General"
+    course_name: Optional[str] = "Course Material"
+    topic: Optional[str] = None
+    total_cards: int = 0
+    due_cards_count: int = 0
+    new_cards_count: int = 0
+    learning_cards_count: int = 0
+    graduated_cards_count: int = 0
+    leech_cards_count: int = 0
+    completion_percentage: float = 0.0
+    mastery_percentage: float = 0.0
+    needs_review_today: bool = False
+    finished_today: bool = False
+    next_stage_label: Optional[str] = None
+    status: str = "not_started"  # "needs_review" | "up_to_date" | "mastered" | "not_started"
+    next_review_due: Optional[datetime] = None
+    stage_breakdown: Dict[str, int] = Field(default_factory=dict)
+
+
+class DeckOverviewResponse(BaseModel):
+    total_files: int = 0
+    files_needing_review: int = 0
+    total_due_cards: int = 0
+    total_graduated_cards: int = 0
+    overall_completion_percentage: float = 0.0
+    files: List[FileReviewStats] = Field(default_factory=list)
+
+
+class DeckCompletionRequest(BaseModel):
+    folder_id: uuid.UUID
+    document_id: Optional[uuid.UUID] = None
+    file_name: Optional[str] = None
+    cards_reviewed: int = 0
+
+
+class DeckCompletionResponse(BaseModel):
+    status: str = "success"
+    message: str
+    file_name: str
+    folder_id: uuid.UUID
+    document_id: Optional[uuid.UUID] = None
+    cards_completed: int
+    completed_at: datetime
+    current_stage: str
+    next_stage: str
+    next_review_due: datetime
+
