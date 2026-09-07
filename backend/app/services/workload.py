@@ -1,3 +1,4 @@
+import math
 from datetime import datetime, timezone
 from typing import List, Optional, Tuple
 from uuid import UUID, uuid4
@@ -8,6 +9,9 @@ from backend.app.schemas.workload import (
     LOOKAHEAD_DAYS_DEFAULT,
     MIN_DISTANCE_DAYS,
     NORMALIZATION_GAMMA,
+    URGENCY_HALFLIFE_DAYS,
+    URGENCY_SCALE,
+    URGENCY_STEEPNESS,
     EventItem,
     ModeTransitionEvent,
     WorkloadCalculationRequest,
@@ -18,25 +22,33 @@ from backend.app.schemas.workload import (
 
 class WorkloadEngine:
     """
-    Continuous rolling 3-day lookahead Workload Score W(t) and Schmitt-trigger
-    hysteresis state machine.
+    Continuous rolling lookahead Workload Score W(t) and Schmitt-trigger
+    hysteresis state machine with date-proximity urgency modeling.
     """
 
     @staticmethod
     def calculate_event_decay(
         event: EventItem,
         reference_time: datetime,
-        gamma: float = NORMALIZATION_GAMMA,
+        d0: float = URGENCY_HALFLIFE_DAYS,
+        k: float = URGENCY_STEEPNESS,
+        scale: float = URGENCY_SCALE,
+        gamma: Optional[float] = None,
     ) -> Tuple[float, float]:
-        """Calculates fractional days distance d_e(t) and hyperbolic decay contribution."""
+        """
+        Calculates fractional days distance d_e(t) and smooth date-urgency contribution u_e.
+        Uses a smooth, non-singular Hill proximity model:
+          f(d_e) = 1.0 / (1.0 + (max(0.0, d_e) / d0) ** k)
+          contribution = event.effective_weight * f(d_e) * scale
+        """
         delta = event.start_time - reference_time
         d_e = delta.total_seconds() / 86400.0
 
         if d_e < 0.0:
             return d_e, 0.0  # Past event
 
-        clamped_d_e = max(MIN_DISTANCE_DAYS, d_e)
-        contribution = event.effective_weight / (clamped_d_e * gamma)
+        proximity = 1.0 / (1.0 + (max(0.0, d_e) / d0) ** k)
+        contribution = event.effective_weight * proximity * scale
         return d_e, contribution
 
     @classmethod
@@ -45,10 +57,17 @@ class WorkloadEngine:
         events: List[EventItem],
         reference_time: Optional[datetime] = None,
         lookahead_days: float = LOOKAHEAD_DAYS_DEFAULT,
-        gamma: float = NORMALIZATION_GAMMA,
+        d0: float = URGENCY_HALFLIFE_DAYS,
+        k: float = URGENCY_STEEPNESS,
+        scale: float = URGENCY_SCALE,
+        gamma: Optional[float] = None,
     ) -> Tuple[float, float, int, List[EventItem]]:
         """
-        Computes W(t) = min(1.0, sum(w_e / (max(0.25, d_e(t)) * gamma))).
+        Computes rolling Workload Score W(t) using date urgency proximity and smooth
+        tanh compression:
+          W(t) = tanh(sum(u_e))
+        Prevents premature saturation at 100% when 2 deadlines occur, while ensuring near deadlines
+        (e.g., within 5 days) properly register high urgency / Busy Mode.
         Returns (score, raw_sum, active_event_count, active_events).
         """
         if reference_time is None:
@@ -68,12 +87,19 @@ class WorkloadEngine:
                 event_time = event_time.replace(tzinfo=timezone.utc)
                 event = event.model_copy(update={"start_time": event_time})
 
-            d_e, contribution = cls.calculate_event_decay(event, reference_time, gamma)
+            d_e, contribution = cls.calculate_event_decay(
+                event=event,
+                reference_time=reference_time,
+                d0=d0,
+                k=k,
+                scale=scale,
+                gamma=gamma,
+            )
             if 0.0 <= d_e <= lookahead_days:
                 raw_sum += contribution
                 active_events.append(event)
 
-        score = min(1.0, max(0.0, raw_sum))
+        score = min(1.0, max(0.0, math.tanh(raw_sum)))
         return score, raw_sum, len(active_events), active_events
 
     @classmethod
@@ -162,7 +188,7 @@ class WorkloadEngine:
         cls,
         user_id: UUID,
         previous_mode: Optional[WorkloadMode] = None,
-        days_ahead: int = 3,
+        days_ahead: int = 7,
     ) -> WorkloadScoreResponse:
         """
         Evaluates real-time workload for a student by querying their upcoming events

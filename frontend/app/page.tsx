@@ -24,7 +24,10 @@ import {
   GraduationCap,
   ExternalLink,
   ChevronRight,
-  Loader2
+  Loader2,
+  CheckCircle2,
+  Circle,
+  Trash2
 } from "lucide-react";
 
 import Navbar from "@/components/Navbar";
@@ -112,6 +115,7 @@ interface AcademicEventItem {
   weight?: number;
   source?: string;
   course_id?: string | null;
+  is_completed?: boolean;
 }
 
 export default function DashboardPage() {
@@ -122,6 +126,7 @@ export default function DashboardPage() {
   const [activeMode, setActiveMode] = useState<"free" | "busy" | "hysteresis_hold">("free");
   const [activeEventCount, setActiveEventCount] = useState<number>(0);
   const [criticalEvents, setCriticalEvents] = useState<string[]>([]);
+  const [lookaheadDays, setLookaheadDays] = useState<number>(7);
   const [learningStyle, setLearningStyle] = useState(profile?.learning_style || "read_write");
 
   // Real Database Data States
@@ -129,6 +134,8 @@ export default function DashboardPage() {
   const [studyQueue, setStudyQueue] = useState<DbStudyDocument[]>([]);
   const [courses, setCourses] = useState<CourseItem[]>([]);
   const [events, setEvents] = useState<AcademicEventItem[]>([]);
+  const [deadlineFilter, setDeadlineFilter] = useState<"all" | "active" | "completed">("all");
+  const [showAllDeadlines, setShowAllDeadlines] = useState<boolean>(false);
   
   // UI & Modal States
   const [isLoading, setIsLoading] = useState<boolean>(true);
@@ -159,13 +166,14 @@ export default function DashboardPage() {
   }, [session?.access_token, user?.id]);
 
   // Master fetch strictly for real data
-  const fetchAllRealData = useCallback(async () => {
+  const fetchAllRealData = useCallback(async (customDays?: number | unknown) => {
     setIsRefreshing(true);
     const headers = getHeaders();
+    const daysToUse = typeof customDays === "number" ? customDays : lookaheadDays;
 
     try {
-      // 1. Fetch live workload calculation
-      const workloadPromise = fetch(`${API_URL}/workload/live`, { headers })
+      // 1. Fetch live workload calculation with dynamic lookahead
+      const workloadPromise = fetch(`${API_URL}/workload/live?days_ahead=${daysToUse}`, { headers })
         .then((res) => (res.ok ? res.json() : null))
         .catch(() => null);
 
@@ -233,15 +241,17 @@ export default function DashboardPage() {
 
       if (Array.isArray(eventsData)) {
         setEvents(eventsData);
-        // If critical_events was empty, populate from upcoming event titles
+        // If critical_events was empty, populate from upcoming uncompleted event titles
         if (!workloadData?.critical_events || workloadData.critical_events.length === 0) {
           const nowIso = new Date().toISOString();
           const upcoming = eventsData
-            .filter((e: any) => e.start_time >= nowIso)
+            .filter((e: any) => e.start_time >= nowIso && !e.is_completed)
             .slice(0, 3)
             .map((e: any) => e.title);
           if (upcoming.length > 0) {
             setCriticalEvents(upcoming);
+          } else {
+            setCriticalEvents([]);
           }
         }
       }
@@ -251,7 +261,93 @@ export default function DashboardPage() {
       setIsLoading(false);
       setIsRefreshing(false);
     }
-  }, [API_URL, getHeaders]);
+  }, [API_URL, getHeaders, lookaheadDays]);
+
+  const handleSeedDemo = async (scenario: "busy" | "deadband" | "free") => {
+    setIsRefreshing(true);
+    const headers = getHeaders();
+    try {
+      const res = await fetch(`${API_URL}/events/seed-demo?scenario=${scenario}`, {
+        method: "POST",
+        headers,
+      });
+      if (res.ok) {
+        await fetchAllRealData();
+      }
+    } catch (err) {
+      console.warn("Failed to seed demo events:", err);
+    } finally {
+      setIsRefreshing(false);
+    }
+  };
+
+  const handleToggleCompleteEvent = async (eventId: string, currentCompleted: boolean) => {
+    const newCompleted = !currentCompleted;
+    // Optimistically update local events list
+    setEvents((prev) =>
+      prev.map((e) => (e.id === eventId ? { ...e, is_completed: newCompleted } : e))
+    );
+
+    // If marking as completed and no other active events remain, optimistically reset Workload Cockpit to 0% Free
+    const nowIso = new Date().toISOString();
+    const remainingActive = events.filter(
+      (e) => e.id !== eventId && !e.is_completed && e.start_time >= nowIso
+    );
+    if (newCompleted && remainingActive.length === 0) {
+      setWorkloadScore(0.0);
+      setActiveMode("free");
+      setActiveEventCount(0);
+      setCriticalEvents([]);
+    }
+
+    const headers = getHeaders();
+    try {
+      const res = await fetch(`${API_URL}/events/${eventId}/complete?is_completed=${newCompleted}`, {
+        method: "PATCH",
+        headers,
+      });
+      if (res.ok) {
+        await fetchAllRealData();
+      } else {
+        // Direct Supabase update fallback
+        try {
+          const supabase = createClient();
+          await supabase.from("events").update({ is_completed: newCompleted }).eq("id", eventId);
+          await fetchAllRealData();
+        } catch {
+          await fetchAllRealData();
+        }
+      }
+    } catch (err) {
+      console.error("Failed to toggle event completion:", err);
+      await fetchAllRealData();
+    }
+  };
+
+  const handleDeleteEvent = async (eventId: string) => {
+    setEvents((prev) => prev.filter((e) => e.id !== eventId));
+    const headers = getHeaders();
+    try {
+      const res = await fetch(`${API_URL}/events/${eventId}`, {
+        method: "DELETE",
+        headers,
+      });
+      if (res.ok) {
+        await fetchAllRealData();
+      } else {
+        try {
+          const supabase = createClient();
+          await supabase.from("events").delete().eq("id", eventId);
+          await fetchAllRealData();
+        } catch {
+          await fetchAllRealData();
+        }
+      }
+    } catch (err) {
+      console.error("Failed to delete event:", err);
+      await fetchAllRealData();
+    }
+  };
 
   useEffect(() => {
     if (profile) {
@@ -374,7 +470,7 @@ export default function DashboardPage() {
               <span>Change Style</span>
             </button>
             <button
-              onClick={fetchAllRealData}
+              onClick={() => fetchAllRealData()}
               disabled={isRefreshing}
               title="Refresh live data from database"
               className="p-2.5 rounded-[18px] bg-white hover:bg-brand-surface-dim border border-brand-outline-variant text-brand-secondary transition-all shadow-sm flex items-center justify-center disabled:opacity-50"
@@ -390,6 +486,15 @@ export default function DashboardPage() {
           mode={activeMode}
           activeEventCount={activeEventCount}
           criticalEvents={criticalEvents}
+          lookaheadDays={lookaheadDays}
+          onLookaheadChange={(days) => {
+            setLookaheadDays(days);
+            fetchAllRealData(days);
+          }}
+          onAddDeadline={() => setShowEventModal(true)}
+          onSeedDemo={handleSeedDemo}
+          onRefresh={() => fetchAllRealData()}
+          isRefreshing={isRefreshing}
         />
 
         {/* 3 Interactive Quick Action Modules (rounded-[32px]) */}
@@ -729,77 +834,200 @@ export default function DashboardPage() {
         </div>
 
         {/* Section 3: Live Academic Deadlines & Calendar Timeline (Real Data) */}
-        <div className="bg-white border border-brand-outline-variant shadow-elevation-sm rounded-[32px] p-8 space-y-6">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-brand-outline-variant pb-4">
-            <div>
-              <div className="flex items-center gap-2.5">
-                <Calendar className="w-5 h-5 text-brand-primary" />
-                <h2 className="text-2xl font-black text-brand-secondary tracking-tight">
-                  Academic Schedule & Deadlines
-                </h2>
-              </div>
-              <p className="text-xs text-brand-on-surface-variant mt-1">
-                Real deadlines synchronized from course syllabi, manual entries, and Google Calendar.
-              </p>
-            </div>
-            <button
-              onClick={() => setShowEventModal(true)}
-              className="px-3.5 py-1.5 rounded-[16px] bg-brand-surface-dim hover:bg-brand-outline-variant/50 border border-brand-outline-variant text-xs font-bold text-brand-secondary transition-all flex items-center gap-1.5 shadow-sm"
-            >
-              <Plus className="w-3.5 h-3.5 text-brand-primary" />
-              <span>+ Add Event</span>
-            </button>
-          </div>
+        {(() => {
+          const activeEventsList = events.filter((e) => !e.is_completed);
+          const completedEventsList = events.filter((e) => e.is_completed);
+          const filteredEventsList =
+            deadlineFilter === "active"
+              ? activeEventsList
+              : deadlineFilter === "completed"
+              ? completedEventsList
+              : events;
+          const displayedEventsList = showAllDeadlines
+            ? filteredEventsList
+            : filteredEventsList.slice(0, 9);
 
-          {events.length === 0 ? (
-            <div className="py-8 text-center rounded-[24px] bg-brand-surface-dim border border-brand-outline-variant p-6">
-              <Calendar className="w-8 h-8 text-brand-on-surface-variant mx-auto mb-2 opacity-50" />
-              <h4 className="text-sm font-bold text-brand-secondary">No Deadlines Scheduled</h4>
-              <p className="text-xs text-brand-on-surface-variant max-w-sm mx-auto mt-1">
-                Add an upcoming exam, project submission, or quiz to allow the Schmitt Hysteresis Workload Engine to automatically protect your cognitive bandwidth.
-              </p>
-            </div>
-          ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-              {events.slice(0, 6).map((evt) => {
-                const isExam = evt.event_type?.toLowerCase().includes("exam");
-                const isQuiz = evt.event_type?.toLowerCase().includes("quiz");
-                return (
-                  <div
-                    key={evt.id}
-                    className="p-4 rounded-[20px] bg-brand-surface-dim/50 border border-brand-outline-variant flex items-start justify-between gap-3"
-                  >
-                    <div className="space-y-1 min-w-0">
-                      <div className="flex items-center gap-2">
-                        <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider ${
-                          isExam 
-                            ? "bg-rose-100 text-rose-800"
-                            : isQuiz
-                            ? "bg-amber-100 text-amber-800"
-                            : "bg-blue-100 text-blue-800"
-                        }`}>
-                          {evt.event_type || "assignment"}
-                        </span>
-                        {evt.weight && (
-                          <span className="text-[10px] font-mono text-brand-on-surface-variant">
-                            weight: {evt.weight}x
-                          </span>
-                        )}
-                      </div>
-                      <h4 className="text-sm font-bold text-brand-secondary tracking-tight truncate" title={evt.title}>
-                        {evt.title}
-                      </h4>
-                      <p className="text-xs text-brand-on-surface-variant flex items-center gap-1">
-                        <Clock className="w-3 h-3" />
-                        <span>{formatEventDate(evt.start_time)}</span>
-                      </p>
-                    </div>
+          return (
+            <div className="bg-white border border-brand-outline-variant shadow-elevation-sm rounded-[32px] p-8 space-y-6">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-brand-outline-variant pb-4">
+                <div>
+                  <div className="flex items-center gap-2.5">
+                    <Calendar className="w-5 h-5 text-brand-primary" />
+                    <h2 className="text-2xl font-black text-brand-secondary tracking-tight">
+                      Academic Schedule & Deadlines
+                    </h2>
                   </div>
-                );
-              })}
+                  <p className="text-xs text-brand-on-surface-variant mt-1">
+                    Real deadlines synchronized from course syllabi, manual entries, and Google Calendar.
+                  </p>
+                </div>
+                <div className="flex items-center gap-2 flex-wrap">
+                  {events.length > 0 && (
+                    <div className="flex items-center bg-brand-surface-dim p-1 rounded-[16px] border border-brand-outline-variant text-xs font-semibold">
+                      <button
+                        onClick={() => setDeadlineFilter("all")}
+                        className={`px-2.5 py-1 rounded-[12px] transition-all ${
+                          deadlineFilter === "all"
+                            ? "bg-white text-brand-secondary shadow-xs font-bold"
+                            : "text-brand-on-surface-variant hover:text-brand-secondary"
+                        }`}
+                      >
+                        All ({events.length})
+                      </button>
+                      <button
+                        onClick={() => setDeadlineFilter("active")}
+                        className={`px-2.5 py-1 rounded-[12px] transition-all ${
+                          deadlineFilter === "active"
+                            ? "bg-white text-brand-primary shadow-xs font-bold"
+                            : "text-brand-on-surface-variant hover:text-brand-secondary"
+                        }`}
+                      >
+                        Active ({activeEventsList.length})
+                      </button>
+                      <button
+                        onClick={() => setDeadlineFilter("completed")}
+                        className={`px-2.5 py-1 rounded-[12px] transition-all ${
+                          deadlineFilter === "completed"
+                            ? "bg-white text-emerald-700 shadow-xs font-bold"
+                            : "text-brand-on-surface-variant hover:text-brand-secondary"
+                        }`}
+                      >
+                        Done ({completedEventsList.length})
+                      </button>
+                    </div>
+                  )}
+                  <button
+                    onClick={() => setShowEventModal(true)}
+                    className="px-3.5 py-1.5 rounded-[16px] bg-brand-surface-dim hover:bg-brand-outline-variant/50 border border-brand-outline-variant text-xs font-bold text-brand-secondary transition-all flex items-center gap-1.5 shadow-sm"
+                  >
+                    <Plus className="w-3.5 h-3.5 text-brand-primary" />
+                    <span>+ Add Event</span>
+                  </button>
+                </div>
+              </div>
+
+              {filteredEventsList.length === 0 ? (
+                <div className="py-8 text-center rounded-[24px] bg-brand-surface-dim border border-brand-outline-variant p-6">
+                  {deadlineFilter === "active" && events.length > 0 ? (
+                    <>
+                      <CheckCircle2 className="w-8 h-8 text-emerald-600 mx-auto mb-2 opacity-80" />
+                      <h4 className="text-sm font-bold text-brand-secondary">All Deadlines Completed!</h4>
+                      <p className="text-xs text-brand-on-surface-variant max-w-sm mx-auto mt-1">
+                        You have marked all scheduled deadlines as done. Your Workload Score is currently at 0% in Free Mode.
+                      </p>
+                    </>
+                  ) : (
+                    <>
+                      <Calendar className="w-8 h-8 text-brand-on-surface-variant mx-auto mb-2 opacity-50" />
+                      <h4 className="text-sm font-bold text-brand-secondary">No Deadlines Scheduled</h4>
+                      <p className="text-xs text-brand-on-surface-variant max-w-sm mx-auto mt-1">
+                        Add an upcoming exam, project submission, or quiz to allow the Schmitt Hysteresis Workload Engine to automatically protect your cognitive bandwidth.
+                      </p>
+                    </>
+                  )}
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                    {displayedEventsList.map((evt) => {
+                      const isExam = evt.event_type?.toLowerCase().includes("exam");
+                      const isQuiz = evt.event_type?.toLowerCase().includes("quiz");
+                      return (
+                        <div
+                          key={evt.id}
+                          className={`p-4 rounded-[20px] border transition-all duration-200 flex items-start justify-between gap-3 group ${
+                            evt.is_completed
+                              ? "bg-brand-surface-dim/30 border-brand-outline-variant/50 opacity-65"
+                              : "bg-brand-surface-dim/50 border-brand-outline-variant hover:border-brand-outline hover:shadow-xs"
+                          }`}
+                        >
+                          <div className="space-y-1.5 min-w-0 flex-1">
+                            <div className="flex items-center gap-2">
+                              <span
+                                className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider ${
+                                  evt.is_completed
+                                    ? "bg-slate-100 text-slate-600"
+                                    : isExam
+                                    ? "bg-rose-100 text-rose-800"
+                                    : isQuiz
+                                    ? "bg-amber-100 text-amber-800"
+                                    : "bg-blue-100 text-blue-800"
+                                }`}
+                              >
+                                {evt.event_type || "assignment"}
+                              </span>
+                              {evt.weight && (
+                                <span className="text-[10px] font-mono text-brand-on-surface-variant">
+                                  weight: {evt.weight}x
+                                </span>
+                              )}
+                              {evt.is_completed && (
+                                <span className="text-[10px] font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 px-1.5 py-0.2 rounded">
+                                  Done
+                                </span>
+                              )}
+                            </div>
+                            <h4
+                              className={`text-sm font-bold text-brand-secondary tracking-tight truncate ${
+                                evt.is_completed ? "line-through text-brand-on-surface-variant" : ""
+                              }`}
+                              title={evt.title}
+                            >
+                              {evt.title}
+                            </h4>
+                            <p className="text-xs text-brand-on-surface-variant flex items-center gap-1">
+                              <Clock className="w-3 h-3" />
+                              <span>{formatEventDate(evt.start_time)}</span>
+                            </p>
+                          </div>
+
+                          {/* Action buttons: Toggle Complete & Delete */}
+                          <div className="flex items-center gap-1 flex-shrink-0">
+                            <button
+                              onClick={() => handleToggleCompleteEvent(evt.id, !!evt.is_completed)}
+                              title={evt.is_completed ? "Mark as Incomplete" : "Mark as Completed"}
+                              className={`p-1.5 rounded-full transition-all ${
+                                evt.is_completed
+                                  ? "text-emerald-600 bg-emerald-50 hover:bg-emerald-100"
+                                  : "text-brand-on-surface-variant hover:text-emerald-600 hover:bg-white"
+                              }`}
+                            >
+                              {evt.is_completed ? (
+                                <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+                              ) : (
+                                <Circle className="w-4 h-4" />
+                              )}
+                            </button>
+                            <button
+                              onClick={() => handleDeleteEvent(evt.id)}
+                              title="Delete Event"
+                              className="p-1.5 rounded-full text-brand-on-surface-variant hover:text-rose-600 hover:bg-rose-50 transition-all opacity-80 group-hover:opacity-100"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+
+                  {filteredEventsList.length > 9 && (
+                    <div className="flex justify-center pt-2">
+                      <button
+                        onClick={() => setShowAllDeadlines(!showAllDeadlines)}
+                        className="px-4 py-1.5 rounded-[16px] bg-brand-surface-dim hover:bg-brand-outline-variant/50 border border-brand-outline-variant text-xs font-bold text-brand-secondary transition-all shadow-xs"
+                      >
+                        {showAllDeadlines
+                          ? "Show Less"
+                          : `Show All ${filteredEventsList.length} Deadlines`}
+                      </button>
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
-          )}
-        </div>
+          );
+        })()}
       </main>
 
       {/* Pop-Up Modal: Real Document Reader */}

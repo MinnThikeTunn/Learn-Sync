@@ -13,10 +13,12 @@ from backend.app.services.workload import WorkloadEngine
 from backend.app.core.events import EventPublisher
 
 
-def test_workload_hyperbolic_decay_single_exam():
+def test_workload_date_urgency_single_exam():
     """
     Single exam (weight=3.0) 2.0 days away:
-    contribution = 3.0 / (2.0 * 8.0) = 3.0 / 16.0 = 0.1875
+    f(2.0) = 1 / (1 + 2.0/6.5) ≈ 0.7647
+    raw_sum = 3.0 * 0.7647 * 0.28 ≈ 0.6424
+    score = tanh(0.6424) ≈ 0.5665 (in deadband)
     """
     ref_time = datetime(2026, 9, 1, 12, 0, tzinfo=timezone.utc)
     user_id = uuid.uuid4()
@@ -32,75 +34,108 @@ def test_workload_hyperbolic_decay_single_exam():
     score, raw_sum, count, active_events = WorkloadEngine.compute_workload_score(
         events=events,
         reference_time=ref_time,
-        lookahead_days=3.0,
+        lookahead_days=7.0,
     )
 
     assert count == 1
-    assert math.isclose(score, 0.1875, rel_tol=1e-4)
-    assert math.isclose(raw_sum, 0.1875, rel_tol=1e-4)
+    assert math.isclose(raw_sum, 0.6424, rel_tol=1e-2)
+    assert math.isclose(score, 0.5665, rel_tol=1e-2)
 
 
-def test_workload_imminent_event_clamping():
+def test_workload_two_deadlines_near_date_trigger_busy_mode():
     """
-    Imminent exam 0.1 days away (<= 0.25 days min clamp):
-    d_e clamped to 0.25: contribution = 3.0 / (0.25 * 8.0) = 3.0 / 2.0 = 1.5 -> W(t) = min(1.0, 1.5) = 1.0
+    Two deadlines (Exam w=3.0, Project w=2.5) 5.0 days away:
+    f(5.0) ≈ 0.5652
+    raw_sum = (3.0 + 2.5) * 0.5652 * 0.28 ≈ 0.8704
+    score = tanh(0.8704) ≈ 0.7016 -> > 0.70 (Triggers Busy Mode at 5 days away)
     """
     ref_time = datetime(2026, 9, 1, 12, 0, tzinfo=timezone.utc)
     user_id = uuid.uuid4()
     events = [
         EventItem(
             user_id=user_id,
-            title="Imminent Exam",
+            title="Upcoming Exam",
             event_type=EventType.EXAM,
-            start_time=ref_time + timedelta(hours=2.4),  # 0.1 days
+            start_time=ref_time + timedelta(days=5.0),
+        ),
+        EventItem(
+            user_id=user_id,
+            title="Upcoming Project",
+            event_type=EventType.PROJECT,
+            start_time=ref_time + timedelta(days=5.0),
+        ),
+    ]
+
+    score, raw_sum, count, _ = WorkloadEngine.compute_workload_score(
+        events=events,
+        reference_time=ref_time,
+        lookahead_days=7.0,
+    )
+
+    assert count == 2
+    assert score > 0.70, f"Expected Busy Mode (>0.70) at 5 days away, got {score}"
+    assert math.isclose(score, 0.7016, rel_tol=1e-2)
+
+
+def test_workload_two_deadlines_gradual_progression_no_peg_100():
+    """
+    Two deadlines (Exam 3.0, Project 2.5) 1.0 day away:
+    Increases urgency smoothly (~87.0%) without prematurely hard-capping at 100%.
+    """
+    ref_time = datetime(2026, 9, 1, 12, 0, tzinfo=timezone.utc)
+    user_id = uuid.uuid4()
+    events = [
+        EventItem(
+            user_id=user_id,
+            title="Exam Tomorrow",
+            event_type=EventType.EXAM,
+            start_time=ref_time + timedelta(days=1.0),
+        ),
+        EventItem(
+            user_id=user_id,
+            title="Project Tomorrow",
+            event_type=EventType.PROJECT,
+            start_time=ref_time + timedelta(days=1.0),
+        ),
+    ]
+
+    score, raw_sum, count, _ = WorkloadEngine.compute_workload_score(
+        events=events,
+        reference_time=ref_time,
+        lookahead_days=7.0,
+    )
+
+    assert count == 2
+    assert 0.80 < score < 0.95, f"Expected high urgency between 80% and 95%, got {score}"
+    assert math.isclose(score, 0.8704, rel_tol=1e-2)
+
+
+def test_workload_single_light_assignment_five_days_free_mode():
+    """Single assignment (w=1.5) 5 days away remains safely in Free Mode (~23.3%)."""
+    ref_time = datetime(2026, 9, 1, 12, 0, tzinfo=timezone.utc)
+    user_id = uuid.uuid4()
+    events = [
+        EventItem(
+            user_id=user_id,
+            title="Standard Assignment",
+            event_type=EventType.ASSIGNMENT,
+            start_time=ref_time + timedelta(days=5.0),
         )
     ]
 
     score, raw_sum, count, _ = WorkloadEngine.compute_workload_score(
         events=events,
         reference_time=ref_time,
-        lookahead_days=3.0,
+        lookahead_days=7.0,
     )
 
     assert count == 1
-    assert score == 1.0
-    assert math.isclose(raw_sum, 1.5, rel_tol=1e-4)
-
-
-def test_workload_multi_event_density():
-    """
-    Two exams 1.0 day away:
-    contribution = 3.0 / (1.0 * 8.0) + 3.0 / (1.0 * 8.0) = 0.375 + 0.375 = 0.75
-    """
-    ref_time = datetime(2026, 9, 1, 12, 0, tzinfo=timezone.utc)
-    user_id = uuid.uuid4()
-    events = [
-        EventItem(
-            user_id=user_id,
-            title="Exam 1",
-            event_type=EventType.EXAM,
-            start_time=ref_time + timedelta(days=1.0),
-        ),
-        EventItem(
-            user_id=user_id,
-            title="Exam 2",
-            event_type=EventType.EXAM,
-            start_time=ref_time + timedelta(days=1.0),
-        ),
-    ]
-
-    score, raw_sum, count, _ = WorkloadEngine.compute_workload_score(
-        events=events,
-        reference_time=ref_time,
-        lookahead_days=3.0,
-    )
-
-    assert count == 2
-    assert math.isclose(score, 0.75, rel_tol=1e-4)
+    assert score <= 0.55
+    assert math.isclose(score, 0.2331, rel_tol=1e-2)
 
 
 def test_workload_excludes_past_and_completed_events():
-    """Events in the past or flagged completed are excluded from W(t)."""
+    """Events in the past, completed, or beyond lookahead are excluded from W(t)."""
     ref_time = datetime(2026, 9, 1, 12, 0, tzinfo=timezone.utc)
     user_id = uuid.uuid4()
     events = [
@@ -121,14 +156,14 @@ def test_workload_excludes_past_and_completed_events():
             user_id=user_id,
             title="Far Future Exam",
             event_type=EventType.EXAM,
-            start_time=ref_time + timedelta(days=5.0),  # > 3 days
+            start_time=ref_time + timedelta(days=10.0),  # > 7 days
         ),
     ]
 
     score, raw_sum, count, _ = WorkloadEngine.compute_workload_score(
         events=events,
         reference_time=ref_time,
-        lookahead_days=3.0,
+        lookahead_days=7.0,
     )
 
     assert count == 0
@@ -181,6 +216,7 @@ def test_event_publisher_memory_fallback():
             user_id=user_id,
             title="Heavy Final Exam",
             event_type=EventType.EXAM,
+            weight=4.0,
             start_time=ref_time + timedelta(hours=6),
         )
     ]
@@ -202,4 +238,4 @@ def test_event_publisher_memory_fallback():
     in_memory = publisher.get_in_memory_events()
     assert len(in_memory) == 1
     assert in_memory[0]["routing_key"] == "workload.spike.detected"
-    assert in_memory[0]["payload"]["score"] == 1.0
+    assert in_memory[0]["payload"]["score"] > 0.70

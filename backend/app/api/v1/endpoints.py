@@ -1,7 +1,7 @@
 import logging
 from fastapi import APIRouter, UploadFile, File, Form, HTTPException, Query, Depends, Response
 from typing import List, Optional
-from uuid import UUID
+from uuid import UUID, uuid4
 from pydantic import BaseModel, Field
 
 logger = logging.getLogger(__name__)
@@ -18,6 +18,7 @@ from backend.app.schemas.workload import (
     WorkloadScoreResponse,
     ModeTransitionEvent,
     WorkloadMode,
+    EventCreateRequest,
 )
 from backend.app.schemas.adaptive import (
     GenerateArtifactRequest,
@@ -213,6 +214,18 @@ def review_flashcard(
     """Processes Hybrid 2357-FSRS flashcard review with dynamic retention, graduation, and leech quarantine."""
     effective_user_id = current_user or (request.card.user_id if request.card else None)
     card_id = request.card_id or (request.card.id if request.card else None)
+
+    workload_mode = request.workload_mode
+    workload_score = request.workload_score
+    if workload_mode is None and effective_user_id:
+        try:
+            from backend.app.services.workload import WorkloadEngine
+            live_wl = WorkloadEngine.evaluate_user_workload(user_id=effective_user_id, days_ahead=7)
+            workload_mode = live_wl.current_mode
+            workload_score = live_wl.score
+        except Exception:
+            pass
+
     try:
         return review_session_engine.submit_review(
             user_id=effective_user_id,
@@ -220,8 +233,8 @@ def review_flashcard(
             rating=request.rating,
             card=request.card,
             review_time=request.review_time,
-            workload_mode=request.workload_mode,
-            workload_score=request.workload_score,
+            workload_mode=workload_mode,
+            workload_score=workload_score,
         )
     except ValueError as ve:
         raise HTTPException(status_code=400, detail=str(ve))
@@ -641,7 +654,7 @@ def sync_google_calendar(
 
 @router.get("/events")
 def get_events_list(
-    limit: int = Query(15),
+    limit: int = Query(30),
     current_user: UUID = Depends(get_current_user),
 ):
     """Retrieves list of academic calendar events and deadlines for the student."""
@@ -649,9 +662,149 @@ def get_events_list(
     return db_service.get_all_events(user_id=current_user, limit=limit)
 
 
+@router.post("/events", status_code=201)
+def create_event(
+    event_in: EventCreateRequest,
+    current_user: UUID = Depends(get_current_user),
+):
+    """Creates a new academic event or deadline for the student."""
+    from backend.app.services.database import db_service
+    db_events = [{
+        "user_id": str(current_user),
+        "title": event_in.title,
+        "event_type": event_in.event_type.value if hasattr(event_in.event_type, "value") else str(event_in.event_type),
+        "start_time": event_in.start_time.isoformat(),
+        "end_time": event_in.end_time.isoformat() if event_in.end_time else None,
+        "weight": event_in.weight if event_in.weight is not None else 1.0,
+        "course_id": str(event_in.course_id) if event_in.course_id else None,
+        "source": event_in.source,
+    }]
+    saved = db_service.insert_events(db_events)
+    if not saved:
+        return {
+            "id": str(uuid4()),
+            "user_id": str(current_user),
+            "title": event_in.title,
+            "event_type": event_in.event_type.value if hasattr(event_in.event_type, "value") else str(event_in.event_type),
+            "start_time": event_in.start_time.isoformat(),
+            "weight": event_in.weight or 1.0,
+            "source": event_in.source,
+        }
+    return saved[0]
+
+
+@router.delete("/events/{event_id}")
+def delete_event(
+    event_id: UUID,
+    current_user: UUID = Depends(get_current_user),
+):
+    """Deletes an academic event."""
+    from backend.app.services.database import db_service
+    success = db_service.delete_event(user_id=current_user, event_id=event_id)
+    return {"success": success, "event_id": str(event_id)}
+
+
+@router.patch("/events/{event_id}/complete")
+def toggle_event_complete(
+    event_id: UUID,
+    is_completed: bool = Query(True),
+    current_user: UUID = Depends(get_current_user),
+):
+    """Marks an academic event as completed or incomplete."""
+    from backend.app.services.database import db_service
+    success = db_service.complete_event(user_id=current_user, event_id=event_id, is_completed=is_completed)
+    return {"success": success, "event_id": str(event_id), "is_completed": is_completed}
+
+
+@router.post("/events/seed-demo")
+def seed_demo_events(
+    scenario: str = Query("busy"),
+    current_user: UUID = Depends(get_current_user),
+):
+    """Seeds dynamic upcoming academic events relative to current time for testing Workload Cockpit."""
+    from datetime import datetime, timezone, timedelta
+    from backend.app.services.database import db_service
+    from backend.app.services.workload import WorkloadEngine
+    now = datetime.now(timezone.utc)
+    
+    demo_titles = [
+        "CS301 Distributed Systems Midterm Exam",
+        "AI Lab 4: Attention Mechanism Project",
+        "Algorithms Quiz: Dynamic Programming",
+        "CS101 Weekly Problem Set",
+    ]
+    try:
+        if db_service.supabase.client:
+            uids_to_clean = [str(current_user)]
+            if str(current_user) == "00000000-0000-0000-0000-000000000001":
+                uids_to_clean.append("5602e9c3-3747-428d-94c5-6838a8a59ce8")
+            for uid in uids_to_clean:
+                db_service.supabase.client.table("events").delete().eq("user_id", uid).in_("title", demo_titles).eq("is_completed", False).execute()
+    except Exception as e:
+        logger.warning(f"Could not purge previous demo events: {e}")
+
+    if scenario == "busy":
+        events_to_seed = [
+            {
+                "user_id": str(current_user),
+                "title": "CS301 Distributed Systems Midterm Exam",
+                "event_type": "exam",
+                "start_time": (now + timedelta(days=1.0)).isoformat(),
+                "weight": 3.0,
+                "source": "manual",
+            },
+            {
+                "user_id": str(current_user),
+                "title": "AI Lab 4: Attention Mechanism Project",
+                "event_type": "project",
+                "start_time": (now + timedelta(days=1.5)).isoformat(),
+                "weight": 2.5,
+                "source": "manual",
+            },
+        ]
+    elif scenario == "deadband":
+        events_to_seed = [
+            {
+                "user_id": str(current_user),
+                "title": "CS301 Distributed Systems Midterm Exam",
+                "event_type": "exam",
+                "start_time": (now + timedelta(days=3.0)).isoformat(),
+                "weight": 2.5,
+                "source": "manual",
+            },
+            {
+                "user_id": str(current_user),
+                "title": "Algorithms Quiz: Dynamic Programming",
+                "event_type": "quiz",
+                "start_time": (now + timedelta(days=4.5)).isoformat(),
+                "weight": 1.0,
+                "source": "manual",
+            },
+        ]
+    else:
+        events_to_seed = [
+            {
+                "user_id": str(current_user),
+                "title": "CS101 Weekly Problem Set",
+                "event_type": "assignment",
+                "start_time": (now + timedelta(days=4.0)).isoformat(),
+                "weight": 1.5,
+                "source": "manual",
+            }
+        ]
+    
+    inserted = db_service.insert_events(events_to_seed)
+    evaluated = WorkloadEngine.evaluate_user_workload(user_id=current_user, days_ahead=7)
+    return {
+        "scenario": scenario,
+        "seeded_count": len(inserted),
+        "workload": evaluated,
+    }
+
+
 @router.get("/workload/live", response_model=WorkloadScoreResponse)
 def get_live_workload(
-    days_ahead: int = Query(3),
+    days_ahead: int = Query(7),
     previous_mode: Optional[WorkloadMode] = Query(None),
     current_user: UUID = Depends(get_current_user),
 ):

@@ -28,5 +28,5 @@ def test_evaluate_user_workload_queries_db_and_logs(mock_db):
 
     assert response.score > 0.0
     assert response.active_event_count == 1
-    mock_db.get_upcoming_events.assert_called_once_with(user_id=user_id, days_ahead=3)
+    mock_db.get_upcoming_events.assert_called_once_with(user_id=user_id, days_ahead=7)
     mock_db.record_workload_log.assert_called_once()

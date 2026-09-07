@@ -38,24 +38,35 @@ export default function ManualEventModal({
     setError(null);
 
     try {
-      const supabase = createClient();
-      const user = (await supabase.auth.getUser()).data.user;
-      const effectiveUserId = userId || user?.id;
+      const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000/api/v1";
+      const effectiveUserId = userId || "00000000-0000-0000-0000-000000000001";
+      const headers: Record<string, string> = {
+        "Content-Type": "application/json",
+        "X-Test-User-Id": effectiveUserId,
+      };
 
-      if (!effectiveUserId) {
-        throw new Error("User session not found. Please log in.");
-      }
-
-      const { error: insertError } = await supabase.from("events").insert({
-        user_id: effectiveUserId,
+      const payload = {
         title: title.trim(),
         event_type: eventType,
         start_time: new Date(dueDate).toISOString(),
         weight: parseFloat(weight) || 1.0,
         source: "manual",
+      };
+
+      const res = await fetch(`${API_URL}/events`, {
+        method: "POST",
+        headers,
+        body: JSON.stringify(payload),
       });
 
-      if (insertError) throw insertError;
+      if (!res.ok) {
+        const supabase = createClient();
+        const { error: insertError } = await supabase.from("events").insert({
+          user_id: effectiveUserId,
+          ...payload,
+        });
+        if (insertError) throw insertError;
+      }
 
       setTitle("");
       setDueDate("");

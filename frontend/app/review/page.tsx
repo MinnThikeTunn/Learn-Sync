@@ -211,12 +211,15 @@ function ReviewContent() {
     return `${String(mins).padStart(2, "0")}:${String(secs).padStart(2, "0")}`;
   };
 
+  const [liveWorkloadMode, setLiveWorkloadMode] = useState<"free" | "busy">("free");
+
   // 1. Fetch Deck Overview from backend (only includes learned materials that reached Review)
   const fetchDeckOverview = useCallback(async () => {
     setIsLoadingOverview(true);
+    const headers = { "X-Test-User-Id": user?.id || "00000000-0000-0000-0000-000000000001" };
     try {
       const res = await fetch("http://localhost:8000/api/v1/flashcards/deck-overview", {
-        headers: { "X-Test-User-Id": user?.id || "00000000-0000-0000-0000-000000000001" },
+        headers,
       });
       if (res.ok) {
         const data = await res.json();
@@ -231,6 +234,23 @@ function ReviewContent() {
             course_code: f.course_code,
           })));
         }
+      }
+
+      // Fetch live workload mode to inform FSRS retention scaling
+      try {
+        const wlRes = await fetch("http://localhost:8000/api/v1/workload/live?days_ahead=7", {
+          headers,
+        });
+        if (wlRes.ok) {
+          const wlData = await wlRes.json();
+          if (wlData.current_mode === "busy") {
+            setLiveWorkloadMode("busy");
+          } else {
+            setLiveWorkloadMode("free");
+          }
+        }
+      } catch {
+        // preserve current mode
       }
     } catch (err) {
       console.warn("Failed to fetch deck overview:", err);
@@ -441,7 +461,7 @@ function ReviewContent() {
           body: JSON.stringify({
             card_id: currentCard.id,
             rating: ratingVal,
-            workload_mode: "free",
+            workload_mode: liveWorkloadMode,
           }),
         });
       }

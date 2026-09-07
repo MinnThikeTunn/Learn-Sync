@@ -170,6 +170,23 @@ function StudyPageContent() {
           setSelectedDocId(liveDocs[0].id);
         }
       }
+
+      // Synchronize active workload mode from live telemetry
+      try {
+        const wlRes = await fetch(`${API_URL}/workload/live?days_ahead=7`, {
+          headers: getHeaders(),
+        });
+        if (wlRes.ok) {
+          const wlData = await wlRes.json();
+          if (wlData.current_mode === "busy") {
+            setWorkloadMode("busy");
+          } else {
+            setWorkloadMode("free");
+          }
+        }
+      } catch {
+        // preserve current mode
+      }
     } catch (err) {
       console.warn("Failed to load documents from database:", err);
     } finally {

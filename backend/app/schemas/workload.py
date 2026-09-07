@@ -30,10 +30,14 @@ EVENT_TYPE_WEIGHTS: dict[EventType, float] = {
 }
 
 NORMALIZATION_GAMMA: float = 8.0
-LOOKAHEAD_DAYS_DEFAULT: float = 3.0
+LOOKAHEAD_DAYS_DEFAULT: float = 7.0
 MIN_DISTANCE_DAYS: float = 0.25
 FREE_THRESHOLD: float = 0.55
 BUSY_THRESHOLD: float = 0.70
+
+URGENCY_HALFLIFE_DAYS: float = 6.5
+URGENCY_STEEPNESS: float = 1.0
+URGENCY_SCALE: float = 0.28
 
 
 class EventItem(BaseModel):
@@ -96,6 +100,17 @@ class WorkloadLogCreate(BaseModel):
     user_id: UUID
     score: float = Field(ge=0.0, le=1.0)
     mode: WorkloadMode
-    lookahead_days: int = 3
+    lookahead_days: int = 7
     active_event_count: int = 0
     recorded_at: Optional[datetime] = None
+
+
+class EventCreateRequest(BaseModel):
+    title: str
+    event_type: EventType = EventType.ASSIGNMENT
+    start_time: datetime
+    end_time: Optional[datetime] = None
+    weight: Optional[float] = None
+    course_id: Optional[UUID] = None
+    source: str = "manual"
+

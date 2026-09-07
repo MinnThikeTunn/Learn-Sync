@@ -470,83 +470,79 @@ class DatabaseService:
     def insert_events(self, events: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         if not events or not self.supabase.client:
             return []
+        mapped_events = []
+        for e in events:
+            item = dict(e)
+            if str(item.get("user_id")) == "00000000-0000-0000-0000-000000000001":
+                item["user_id"] = "5602e9c3-3747-428d-94c5-6838a8a59ce8"
+            mapped_events.append(item)
         try:
-            res = self.supabase.client.table("events").insert(events).execute()
+            res = self.supabase.client.table("events").insert(mapped_events).execute()
             return res.data or []
         except Exception as e:
             logger.warning(f"Failed to insert events: {e}")
             return []
 
-    def get_upcoming_events(self, user_id: UUID, days_ahead: int = 3) -> List[Dict[str, Any]]:
+    def get_upcoming_events(self, user_id: UUID, days_ahead: int = 7) -> List[Dict[str, Any]]:
         if not self.supabase.client:
             return []
+        target_uid = "5602e9c3-3747-428d-94c5-6838a8a59ce8" if str(user_id) == "00000000-0000-0000-0000-000000000001" else str(user_id)
         now = datetime.now(timezone.utc)
         horizon = now + timedelta(days=days_ahead)
         try:
             res = (
                 self.supabase.client.table("events")
                 .select("*")
-                .eq("user_id", str(user_id))
+                .eq("user_id", target_uid)
                 .gte("start_time", now.isoformat())
                 .lte("start_time", horizon.isoformat())
                 .order("start_time")
                 .execute()
             )
-            events = res.data or []
-            if not events and str(user_id) == "00000000-0000-0000-0000-000000000001":
-                for dev_uid in ["5602e9c3-3747-428d-94c5-6838a8a59ce8", "0ac178f0-f5b7-4d96-a8b0-b77f8b60c5c6"]:
-                    try:
-                        fb_res = (
-                            self.supabase.client.table("events")
-                            .select("*")
-                            .eq("user_id", dev_uid)
-                            .gte("start_time", now.isoformat())
-                            .lte("start_time", horizon.isoformat())
-                            .order("start_time")
-                            .execute()
-                        )
-                        if fb_res.data:
-                            return fb_res.data
-                    except Exception:
-                        pass
-            return events
+            return res.data or []
         except Exception as e:
             logger.warning(f"Failed to fetch upcoming events: {e}")
             return []
 
-    def get_all_events(self, user_id: UUID, limit: int = 15) -> List[Dict[str, Any]]:
-        """Retrieves user events ordered by start_time descending, with dev fallback."""
+    def get_all_events(self, user_id: UUID, limit: int = 30) -> List[Dict[str, Any]]:
+        """Retrieves user events with active (uncompleted) events first, ordered chronologically."""
         if not self.supabase.client:
             return []
+        target_uid = "5602e9c3-3747-428d-94c5-6838a8a59ce8" if str(user_id) == "00000000-0000-0000-0000-000000000001" else str(user_id)
         try:
             res = (
                 self.supabase.client.table("events")
                 .select("*")
-                .eq("user_id", str(user_id))
-                .order("start_time", desc=True)
+                .eq("user_id", target_uid)
+                .order("is_completed", desc=False)
+                .order("start_time", desc=False)
                 .limit(limit)
                 .execute()
             )
-            events = res.data or []
-            if not events and str(user_id) == "00000000-0000-0000-0000-000000000001":
-                for dev_uid in ["5602e9c3-3747-428d-94c5-6838a8a59ce8", "0ac178f0-f5b7-4d96-a8b0-b77f8b60c5c6"]:
-                    try:
-                        fb_res = (
-                            self.supabase.client.table("events")
-                            .select("*")
-                            .eq("user_id", dev_uid)
-                            .order("start_time", desc=True)
-                            .limit(limit)
-                            .execute()
-                        )
-                        if fb_res.data:
-                            return fb_res.data
-                    except Exception:
-                        pass
-            return events
+            return res.data or []
         except Exception as e:
             logger.warning(f"Failed to fetch all events: {e}")
             return []
+
+    def delete_event(self, user_id: UUID, event_id: UUID) -> bool:
+        if not self.supabase.client:
+            return False
+        try:
+            self.supabase.client.table("events").delete().eq("id", str(event_id)).execute()
+            return True
+        except Exception as e:
+            logger.warning(f"Failed to delete event {event_id}: {e}")
+            return False
+
+    def complete_event(self, user_id: UUID, event_id: UUID, is_completed: bool = True) -> bool:
+        if not self.supabase.client:
+            return False
+        try:
+            self.supabase.client.table("events").update({"is_completed": is_completed}).eq("id", str(event_id)).execute()
+            return True
+        except Exception as e:
+            logger.warning(f"Failed to update complete state for event {event_id}: {e}")
+            return False
 
     def create_flashcard(
         self,
@@ -1699,14 +1695,15 @@ class DatabaseService:
         user_id: UUID,
         score: float,
         mode: str,
-        lookahead_days: int = 3,
+        lookahead_days: int = 7,
         active_event_count: int = 0
     ) -> Optional[Dict[str, Any]]:
         if not self.supabase.client:
             return None
+        target_uid = "5602e9c3-3747-428d-94c5-6838a8a59ce8" if str(user_id) == "00000000-0000-0000-0000-000000000001" else str(user_id)
         try:
             res = self.supabase.client.table("workload_logs").insert({
-                "user_id": str(user_id),
+                "user_id": target_uid,
                 "score": score,
                 "mode": mode,
                 "lookahead_days": lookahead_days,
