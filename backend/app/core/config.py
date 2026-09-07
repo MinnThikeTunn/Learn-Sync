@@ -17,6 +17,12 @@ class Settings(BaseSettings):
     
     # RabbitMQ Settings
     RABBITMQ_URL: str = "amqp://guest:guest@localhost:5672/"
+
+    # Distributed infrastructure.  Leave REDIS_URL empty for local fallback mode.
+    REDIS_URL: Optional[str] = None
+    ASYNC_DOCUMENT_PROCESSING: bool = False
+    ARTIFACT_CACHE_TTL_SECONDS: int = 3600
+    FEYNMAN_RPM_LIMIT: int = 10
     
     # Google OAuth & Calendar / Gmail Settings
     GOOGLE_CLIENT_ID: Optional[str] = None

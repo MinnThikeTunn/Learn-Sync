@@ -77,7 +77,8 @@ flowchart TD
 
     subgraph Storage["Data & Event Layer"]
         DB[(Supabase PostgreSQL + pgvector)]
-        MQ[[RabbitMQ Event Bus]]
+        Redis[(Redis Cache / Locks / Limits / Streams)]
+        MQ[[RabbitMQ + Celery Queue]]
     end
 
     UI <-->|REST / JSON| API
@@ -89,6 +90,11 @@ flowchart TD
     API --> BKT
     API --> Burnout
     Workload -->|Spike Events| MQ
+    API -->|Cache / Lock / Rate Limit| Redis
+    API -->|Document Jobs| MQ
+    MQ --> Worker[Celery Document Worker]
+    Worker --> DB
+    API -->|Learning Events| Redis
     RAG <-->|Hybrid Vector + BM25| DB
     FSRS <-->|Cards & Logs| DB
     BKT <-->|KC State| DB
@@ -103,7 +109,7 @@ learnSync/
 ├── backend/                  # FastAPI Python backend
 │   ├── app/
 │   │   ├── api/v1/          # API endpoint routes (syllabus, workload, artifacts, fsrs, feynman, etc.)
-│   │   ├── core/            # Config, settings, and event publisher (RabbitMQ)
+│   │   ├── core/            # Config, Redis adapters, queues, and event publishers
 │   │   ├── schemas/         # Pydantic data contracts and validation models
 │   │   ├── services/        # Core business & algorithmic logic (Workload, RAG, FSRS, BKT, Feynman, Burnout)
 │   │   └── main.py          # FastAPI application entry point
@@ -128,7 +134,7 @@ learnSync/
 - **Backend:** Python 3.11+, [FastAPI](https://fastapi.tiangolo.com/), [Pydantic v2](https://docs.pydantic.dev/), [py-fsrs](https://github.com/open-spaced-repetition/py-fsrs), [NumPy](https://numpy.org/), [Pika](https://pika.readthedocs.io/)
 - **Frontend:** [Next.js 15](https://nextjs.org/), [React 18](https://react.dev/), [TypeScript](https://www.typescriptlang.org/), [Tailwind CSS](https://tailwindcss.com/), [Lucide Icons](https://lucide.dev/)
 - **Database & Storage:** [Supabase](https://supabase.com/) (PostgreSQL, `pgvector`, Row-Level Security)
-- **Event Streaming:** [RabbitMQ](https://www.rabbitmq.com/) (AMQP for asynchronous workload spike and ingestion events)
+- **Distributed Infrastructure:** [Redis](https://redis.io/) for caching, locks, rate limiting, and Streams; [RabbitMQ](https://www.rabbitmq.com/) + [Celery](https://docs.celeryq.dev/) for document-processing jobs and event delivery
 - **AI / LLMs:** Google Gemini API (Embeddings & Generative Artifact Synthesis)
 
 ---
@@ -141,6 +147,7 @@ learnSync/
 - **Node.js 18+** and **npm** / **pnpm**
 - **Supabase** project (or local Supabase instance)
 - **RabbitMQ** instance (optional for local standalone test runs)
+- **Redis 7+** (optional for local fallback mode; required for shared cache, locks, limits, and Streams)
 
 ---
 
@@ -168,6 +175,10 @@ learnSync/
    SUPABASE_URL="https://your-project.supabase.co"
    SUPABASE_KEY="your-anon-or-service-role-key"
    RABBITMQ_URL="amqp://guest:guest@localhost:5672/"
+   REDIS_URL="redis://localhost:6379/0"
+   ASYNC_DOCUMENT_PROCESSING="false"
+   ARTIFACT_CACHE_TTL_SECONDS="3600"
+   FEYNMAN_RPM_LIMIT="10"
    GEMINI_API_KEY="your-gemini-api-key"
    ```
 
@@ -211,6 +222,75 @@ learnSync/
 1. Open your **Supabase Dashboard** (or run `supabase db push` with the Supabase CLI).
 2. Execute the contents of [`supabase/schema.sql`](file:///D:/learnSync/supabase/schema.sql) in the SQL Editor.
 3. This creates all necessary tables (`users`, `courses`, `virtual_folders`, `documents`, `document_chunks`, `flashcards`, `knowledge_components`, `events`), enables `pgvector`, configures RRF search functions, and sets up RLS policies.
+
+---
+
+## Distributed Infrastructure
+
+**Implementation status: complete for the intended distributed-project scope.** LearnSync includes asynchronous document processing, Redis caching, distributed locking, event delivery, distributed rate limiting, BKT persistence, and demonstration tests. See [`docs/distributed_concepts.md`](docs/distributed_concepts.md) for the detailed implementation report.
+
+LearnSync adds five infrastructure concepts without changing the core learning workflow:
+
+| Concept | Implementation | Applied to |
+|---|---|---|
+| Async message queue | Celery + RabbitMQ | Document upload processing |
+| Distributed cache | Redis with TTL | Study artifact generation |
+| Distributed locking | Redis ownership locks | BKT and flashcard updates |
+| Event streaming | RabbitMQ and Redis Streams | Learning, workload, and burnout events |
+| Distributed rate limiting | Shared Redis fixed-window limiter | Feynman and artifact endpoints |
+
+### Start Redis and RabbitMQ
+
+From the project root:
+
+```bash
+docker compose -f docker-compose.distributed.yml up -d
+```
+
+RabbitMQ management is available at [http://localhost:15672](http://localhost:15672) using `guest` / `guest`.
+
+Set these values in `backend/.env`:
+
+```env
+REDIS_URL=redis://localhost:6379/0
+RABBITMQ_URL=amqp://guest:guest@localhost:5672/
+ASYNC_DOCUMENT_PROCESSING=true
+```
+
+### Run the Celery worker
+
+From the project root, with the backend virtual environment active:
+
+```bash
+celery -A backend.app.core.task_queue:celery_app worker --loglevel=INFO
+```
+
+When asynchronous processing is enabled, document uploads return a pending document and a job identifier. Check processing state with:
+
+```text
+GET /api/v1/documents/{document_id}/status
+```
+
+If Redis or RabbitMQ is unavailable, the application falls back to local cache/lock behavior and synchronous document processing for development.
+
+### Distributed demonstration tests
+
+```bash
+python -m pytest backend/tests/test_distributed_infrastructure.py -q
+```
+
+The tests demonstrate TTL expiry, concurrent lock serialization, shared-limit behavior, replayable event metadata, and safe queue fallback.
+
+The syllabus preview endpoint remains synchronous because it must return staged folders and events in the same request. Converting it to a queued workflow would require a frontend polling flow.
+
+### Final implementation checklist
+
+- Redis and RabbitMQ services run through [`docker-compose.distributed.yml`](docker-compose.distributed.yml).
+- Celery document worker is available through `backend/app/core/task_queue.py`.
+- Redis cache, locks, rate limiting, and Streams are implemented in `backend/app/core/distributed.py`.
+- Learning events are published through `backend/app/core/events.py`.
+- BKT mastery state is persisted through Supabase upsert.
+- Distributed demonstration tests pass in `backend/tests/test_distributed_infrastructure.py`.
 
 ---
 

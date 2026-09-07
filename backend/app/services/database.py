@@ -20,6 +20,37 @@ class DatabaseService:
 
     def __init__(self, supabase_client: Optional[SupabaseVectorClient] = None):
         self.supabase = supabase_client or SupabaseVectorClient()
+
+    def get_student_kc_mastery(self, user_id: UUID, kc_id: UUID) -> Optional[Dict[str, Any]]:
+        """Read one BKT state row for an atomic, locked mastery update."""
+        if not self.supabase.client:
+            return None
+        try:
+            res = (
+                self.supabase.client.table("student_kc_mastery")
+                .select("*")
+                .eq("user_id", str(user_id))
+                .eq("kc_id", str(kc_id))
+                .limit(1)
+                .execute()
+            )
+            return res.data[0] if res.data else None
+        except Exception as exc:
+            logger.warning("Failed to read BKT mastery state: %s", exc)
+            return None
+
+    def upsert_student_kc_mastery(self, state: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+        """Persist the latest BKT state with the database uniqueness constraint."""
+        if not self.supabase.client:
+            return None
+        try:
+            res = self.supabase.client.table("student_kc_mastery").upsert(
+                state, on_conflict="user_id,kc_id"
+            ).execute()
+            return res.data[0] if res.data else None
+        except Exception as exc:
+            logger.warning("Failed to persist BKT mastery state: %s", exc)
+            return None
         self._hybrid_sessions: Dict[Any, Dict[str, Any]] = {}
 
     def create_course(

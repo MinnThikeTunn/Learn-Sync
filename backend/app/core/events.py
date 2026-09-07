@@ -1,8 +1,11 @@
 import json
 import logging
+from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
+from uuid import uuid4
 from backend.app.core.config import settings
 from backend.app.schemas.workload import ModeTransitionEvent
+from backend.app.core.distributed import distributed
 
 logger = logging.getLogger(__name__)
 
@@ -64,6 +67,23 @@ class EventPublisher:
 
     def clear_in_memory_events(self) -> None:
         self._memory_queue.clear()
+
+    def publish_learning_event(self, event_type: str, payload: Dict[str, Any]) -> bool:
+        """Publish a generic learning event to RabbitMQ and Redis Streams when available."""
+        event = {
+            "event_id": str(uuid4()),
+            "event_type": event_type,
+            "occurred_at": datetime.now(timezone.utc).isoformat(),
+            "payload": payload,
+        }
+        published = self._publish(event_type, event)
+        client = distributed.redis
+        if client:
+            try:
+                client.xadd("learnsync:events", {"event": json.dumps(event)}, maxlen=100000, approximate=True)
+            except Exception as exc:
+                logger.warning("Could not append learning event to Redis Stream: %s", exc)
+        return published
 
 
 event_publisher = EventPublisher()
