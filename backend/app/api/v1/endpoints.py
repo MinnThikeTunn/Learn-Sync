@@ -367,30 +367,22 @@ def create_course(
     course: CourseCreate,
     current_user: UUID = Depends(get_current_user),
 ):
-    """Creates a new course and provisions its root virtual folder."""
-    from backend.app.services.database import db_service
-    created = db_service.create_course(
-        user_id=current_user,
-        name=course.name,
-        code=course.code,
-        term=course.term,
-        color=course.color,
-        description=course.description,
+    """Creates a new course and provisions its root virtual folder using Planner-Executor."""
+    from backend.app.services.course_provisioner import (
+        CourseProvisioningPlanner,
+        CourseProvisioningExecutor,
     )
-    course_id = created.get("id")
-    if course_id:
-        try:
-            db_service.create_virtual_folder(
-                user_id=current_user,
-                course_id=course_id,
-                name=course.code,
-                parent_id=None,
-                parent_path="",
-                parent_depth=0,
-            )
-        except Exception:
-            pass
-    return created
+    planner = CourseProvisioningPlanner()
+    executor = CourseProvisioningExecutor()
+    plan = planner.plan(user_id=current_user, course=course)
+    result = executor.execute(plan)
+
+    if result.status == "failed" or not result.course:
+        error_msg = result.errors[0] if result.errors else "Course creation failed"
+        raise HTTPException(status_code=400, detail=error_msg)
+
+    return result.course
+
 
 
 @router.delete("/courses/{course_id}")
