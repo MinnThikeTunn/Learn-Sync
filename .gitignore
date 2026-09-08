@@ -1,10 +1,39 @@
+# Environment files
+.env
+.env.*
+!.env.example
+
+# Python
 __pycache__/
 *.py[cod]
 *$py.class
-*.env
-.venv
+.venv/
+venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Node / frontend
 node_modules/
 .next/
 dist/
 build/
+coverage/
+
+# Logs and local databases
 *.log
+*.sqlite
+*.sqlite3
+*.db
+
+# IDE and operating-system files
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# Local agent/tool output
+.scratch/
+.firecrawl/

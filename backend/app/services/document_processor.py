@@ -161,7 +161,31 @@ class DocumentService:
         )
         doc_id = doc_record.get("id")
 
-        # 3. Extract text
+        return self.process_existing_document(
+            doc_record=doc_record,
+            user_id=user_id,
+            course_id=course_id,
+            folder_id=folder_id,
+            file_name=file_name,
+            file_bytes=file_bytes,
+        )
+
+    def process_existing_document(
+        self,
+        *,
+        doc_record: Dict[str, Any],
+        user_id: UUID,
+        course_id: UUID,
+        folder_id: Optional[UUID],
+        file_name: str,
+        file_bytes: bytes,
+    ) -> Tuple[Dict[str, Any], int]:
+        """Extract, chunk, embed, and index an already-created document record."""
+        doc_id = doc_record.get("id")
+        self.db.update_document_status(doc_id, status="parsing")
+
+        # 1. Extract text
+        mime_type = doc_record.get("file_type", "application/octet-stream")
         extracted_text = self.extract_text_from_bytes(file_bytes, file_name, mime_type)
         if not extracted_text:
             extracted_text = f"Document: {file_name}"
@@ -171,7 +195,7 @@ class DocumentService:
         if not chunks:
             chunks = [(extracted_text, len(extracted_text.split()))]
 
-        # 5. Insert chunks
+        # 2. Insert chunks
         chunk_records = []
         for idx, (content, token_count) in enumerate(chunks):
             embedding = self.generate_embedding(content)
@@ -188,7 +212,7 @@ class DocumentService:
 
         self.db.create_document_chunks(chunk_records)
 
-        # 6. Update document status
+        # 3. Update document status
         self.db.update_document_status(doc_id, status="indexed")
         doc_record["status"] = "indexed"
 

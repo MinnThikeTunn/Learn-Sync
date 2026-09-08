@@ -61,6 +61,9 @@ from backend.app.services.feynman import FeynmanService
 from backend.app.services.bkt import BKTService
 from backend.app.services.burnout_guard import BurnoutGuardService
 from backend.app.core.events import event_publisher
+from backend.app.core.config import settings
+from backend.app.core.distributed import distributed
+from backend.app.core.task_queue import queue_document_processing
 
 router = APIRouter()
 
@@ -83,11 +86,16 @@ async def parse_syllabus_upload(
         course_id=course_id,
         user_id=effective_user_id,
     )
-    return StagedSyllabusPreviewResponse(
+    response = StagedSyllabusPreviewResponse(
         syllabus=parsed,
         suggested_folders=folders,
         suggested_events=parsed.events,
     )
+    event_publisher.publish_learning_event(
+        "syllabus.parsed",
+        {"user_id": str(effective_user_id), "course_id": str(course_id), "module_count": len(parsed.modules)},
+    )
+    return response
 
 
 @router.post("/workload/evaluate", response_model=WorkloadScoreResponse)
@@ -99,6 +107,10 @@ def evaluate_workload(
     response, spike_event = WorkloadEngine.evaluate(request)
     if spike_event:
         event_publisher.publish_workload_spike(spike_event)
+        event_publisher.publish_learning_event(
+            "workload.mode.changed",
+            {"user_id": str(current_user), "mode": response.current_mode.value, "score": response.score},
+        )
     return response
 
 
@@ -110,6 +122,9 @@ def generate_study_artifact(
     """Synthesizes grounded study artifact (4 learning styles x 2 workload modes) strictly from DB chunks."""
     from backend.app.services.database import db_service
     effective_user_id = request.user_id or current_user
+
+    if not distributed.allow(f"artifact:{effective_user_id}", settings.LLM_RPM_LIMIT, 60):
+        raise HTTPException(status_code=429, detail="Artifact generation rate limit exceeded.")
 
     used_chunks = request.chunks
     if not used_chunks:
@@ -140,7 +155,20 @@ def generate_study_artifact(
                 }
             ]
 
-    return AdaptiveLearningEngine.generate_artifact(
+    cache_key = distributed.cache_key(
+        "artifact",
+        request.topic,
+        request.folder_id,
+        request.learning_style,
+        request.workload_mode or WorkloadMode.FREE,
+        request.custom_instructions,
+        used_chunks,
+    )
+    cached = distributed.cache_get(cache_key)
+    if cached:
+        return StudyArtifact.model_validate(cached)
+
+    artifact = AdaptiveLearningEngine.generate_artifact(
         folder_id=request.folder_id,
         style=request.learning_style,
         mode=request.workload_mode or WorkloadMode.FREE,
@@ -148,6 +176,12 @@ def generate_study_artifact(
         chunks=used_chunks,
         custom_instructions=request.custom_instructions,
     )
+    distributed.cache_set(cache_key, artifact.model_dump(mode="json"), settings.ARTIFACT_CACHE_TTL_SECONDS)
+    event_publisher.publish_learning_event(
+        "artifact.generated",
+        {"user_id": str(effective_user_id), "topic": request.topic, "cache_hit": False},
+    )
+    return artifact
 
 
 @router.post("/study/complete-lesson", response_model=StudyCompletionResponse)
@@ -203,6 +237,10 @@ def evaluate_blurting_endpoint(
         duration_seconds=request.duration_seconds or 60.0,
         accuracy_score=result.accuracy_score,
     )
+    event_publisher.publish_learning_event(
+        "blurting.evaluated",
+        {"user_id": str(effective_user_id), "document_id": str(request.document_id) if request.document_id else None, "accuracy": result.accuracy_score},
+    )
     return result
 
 
@@ -227,15 +265,23 @@ def review_flashcard(
             pass
 
     try:
-        return review_session_engine.submit_review(
-            user_id=effective_user_id,
-            card_id=card_id,
-            rating=request.rating,
-            card=request.card,
-            review_time=request.review_time,
-            workload_mode=workload_mode,
-            workload_score=workload_score,
-        )
+        with distributed.lock(f"flashcard:{card_id or 'inline'}") as acquired:
+            if not acquired:
+                raise HTTPException(status_code=409, detail="Flashcard is being reviewed; retry shortly.")
+            result = review_session_engine.submit_review(
+                user_id=effective_user_id,
+                card_id=card_id,
+                rating=request.rating,
+                card=request.card,
+                review_time=request.review_time,
+                workload_mode=workload_mode,
+                workload_score=workload_score,
+            )
+            event_publisher.publish_learning_event(
+                "flashcard.reviewed",
+                {"user_id": str(effective_user_id), "card_id": str(card_id) if card_id else None, "rating": int(request.rating)},
+            )
+            return result
     except ValueError as ve:
         raise HTTPException(status_code=400, detail=str(ve))
 
@@ -309,6 +355,8 @@ def evaluate_feynman_explanation(
 ):
     """Evaluates student explanation with precision-gap analysis and records completion."""
     effective_user_id = current_user or request.user_id or UUID("00000000-0000-0000-0000-000000000001")
+    if not distributed.allow(f"feynman:{effective_user_id}", settings.FEYNMAN_RPM_LIMIT, 60):
+        raise HTTPException(status_code=429, detail="Feynman evaluation rate limit exceeded.")
     if not request.user_id:
         request.user_id = effective_user_id
     if not request.folder_id:
@@ -325,6 +373,10 @@ def evaluate_feynman_explanation(
         topic=request.concept,
         feynman_score=score_pct,
     )
+    event_publisher.publish_learning_event(
+        "feynman.evaluated",
+        {"user_id": str(effective_user_id), "document_id": str(request.document_id) if request.document_id else None, "score": score_pct},
+    )
     return result
 
 
@@ -334,7 +386,31 @@ def update_bkt_mastery(
     current_user: UUID = Depends(get_current_user),
 ):
     """Updates Bayesian Knowledge Tracing posterior mastery state."""
-    return BKTService.update_mastery(request)
+    with distributed.lock(f"bkt:{request.user_id}:{request.kc_id}") as acquired:
+        if not acquired:
+            raise HTTPException(status_code=409, detail="Mastery state is being updated; retry shortly.")
+        existing_raw = db_service.get_student_kc_mastery(request.user_id, request.kc_id)
+        existing = None
+        if existing_raw:
+            from backend.app.schemas.bkt import StudentKCMasteryModel
+            existing = StudentKCMasteryModel.model_validate(existing_raw)
+        result = BKTService.update_mastery(request, existing_model=existing)
+        params = request.params or BKTService.DEFAULT_PARAMS
+        db_service.upsert_student_kc_mastery({
+            "user_id": str(request.user_id),
+            "kc_id": str(request.kc_id),
+            "p_l": result.updated_p_l,
+            "p_transit": params.p_transit,
+            "p_guess": params.p_guess,
+            "p_slip": params.p_slip,
+            "total_attempts": result.total_attempts,
+            "correct_attempts": result.correct_attempts,
+        })
+        event_publisher.publish_learning_event(
+            "bkt.mastery.updated",
+            {"user_id": str(request.user_id), "kc_id": str(request.kc_id), "is_correct": request.is_correct},
+        )
+        return result
 
 
 @router.post("/burnout/check", response_model=BurnoutTriggerResponse)
@@ -343,7 +419,12 @@ def check_burnout_risk(
     current_user: UUID = Depends(get_current_user),
 ):
     """Monitors acute 48h deadline clusters and triggers 90-second B=MAP micro-tasks."""
-    return BurnoutGuardService.evaluate_burnout_risk(request)
+    result = BurnoutGuardService.evaluate_burnout_risk(request)
+    event_publisher.publish_learning_event(
+        "burnout.evaluated",
+        {"user_id": str(request.user_id), "is_risk": result.is_burnout_risk, "deadline_count": result.deadline_count_48h},
+    )
+    return result
 
 
 # =====================================================================
@@ -468,16 +549,82 @@ async def upload_document(
     mime_type = file.content_type or "application/octet-stream"
     course_uuid = UUID(course_id)
     folder_uuid = UUID(folder_id) if folder_id and folder_id.strip() and folder_id.lower() not in ("null", "undefined") else None
-    doc_record, chunks_created = document_service.process_and_store_document(
-        user_id=current_user,
-        course_id=course_uuid,
-        folder_id=folder_uuid,
-        file_name=file.filename or "document.txt",
-        file_bytes=file_bytes,
-        mime_type=mime_type,
-    )
+    file_name = file.filename or "document.txt"
+    job_id = None
+    if settings.ASYNC_DOCUMENT_PROCESSING:
+        storage_path = document_service.upload_to_storage(
+            user_id=current_user,
+            course_id=course_uuid,
+            folder_id=folder_uuid,
+            file_name=file_name,
+            file_bytes=file_bytes,
+            mime_type=mime_type,
+        )
+        doc_record = db_service.create_document(
+            user_id=current_user,
+            course_id=course_uuid,
+            folder_id=folder_uuid,
+            file_name=file_name,
+            storage_path=storage_path,
+            file_type=mime_type,
+            file_size_bytes=len(file_bytes),
+            status="pending",
+        )
+        job_id = queue_document_processing(
+            user_id=current_user,
+            course_id=course_uuid,
+            folder_id=folder_uuid,
+            file_name=file_name,
+            file_bytes=file_bytes,
+            mime_type=mime_type,
+            document_record=doc_record,
+        )
+        if job_id:
+            doc_record["chunks_created"] = 0
+            doc_record["processing_job_id"] = job_id
+            return doc_record
+        logger.warning("Async processing enabled but queue unavailable; processing synchronously.")
+        doc_record, chunks_created = document_service.process_existing_document(
+            doc_record=doc_record,
+            user_id=current_user,
+            course_id=course_uuid,
+            folder_id=folder_uuid,
+            file_name=file_name,
+            file_bytes=file_bytes,
+        )
+    else:
+        doc_record, chunks_created = document_service.process_and_store_document(
+            user_id=current_user,
+            course_id=course_uuid,
+            folder_id=folder_uuid,
+            file_name=file_name,
+            file_bytes=file_bytes,
+            mime_type=mime_type,
+        )
     doc_record["chunks_created"] = chunks_created
+    doc_record["processing_job_id"] = job_id
+    event_publisher.publish_learning_event(
+        "document.uploaded",
+        {"user_id": str(current_user), "document_id": str(doc_record.get("id")), "async": bool(job_id)},
+    )
     return doc_record
+
+
+@router.get("/documents/{document_id}/status")
+def get_document_processing_status(
+    document_id: UUID,
+    current_user: UUID = Depends(get_current_user),
+):
+    """Returns the durable state of an asynchronous document-processing job."""
+    document = db_service.get_document(user_id=current_user, document_id=document_id)
+    if not document:
+        raise HTTPException(status_code=404, detail="Document not found.")
+    return {
+        "document_id": str(document_id),
+        "status": document.get("status", "pending"),
+        "error_message": document.get("error_message"),
+        "updated_at": document.get("updated_at"),
+    }
 
 
 @router.get("/documents", response_model=List[DocumentResponse])

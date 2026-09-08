@@ -32,6 +32,7 @@ class DocumentResponse(DocumentBase):
 
 class DocumentUploadResponse(DocumentResponse):
     chunks_created: int = 0
+    processing_job_id: Optional[str] = None
 
 
 class DocumentChunkDetail(BaseModel):
