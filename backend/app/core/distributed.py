@@ -47,7 +47,7 @@ class DistributedInfrastructure:
     def cache_key(namespace: str, *parts: Any) -> str:
         raw = json.dumps(parts, sort_keys=True, default=str, separators=(",", ":"))
         digest = hashlib.sha256(raw.encode("utf-8")).hexdigest()
-        return f"learnsync:{namespace}:{digest}"
+        return f"{settings.REDIS_KEY_PREFIX}:{namespace}:{digest}"
 
     def cache_get(self, key: str) -> Optional[Any]:
         client = self.redis
@@ -74,18 +74,19 @@ class DistributedInfrastructure:
             self._memory_cache[key] = (time.monotonic() + ttl_seconds, json.loads(encoded))
 
     @contextmanager
-    def lock(self, name: str, timeout_seconds: int = 30) -> Iterator[bool]:
+    def lock(self, name: str, timeout_seconds: Optional[int] = None) -> Iterator[bool]:
         """Acquire a Redis lock with an ownership token, or a local lock offline."""
         client = self.redis
-        key = f"learnsync:lock:{name}"
+        timeout = timeout_seconds if timeout_seconds is not None else settings.DISTRIBUTED_LOCK_TIMEOUT_SECONDS
+        key = f"{settings.REDIS_KEY_PREFIX}:lock:{name}"
         token = str(uuid.uuid4())
         acquired = False
         if client:
-            acquired = bool(client.set(key, token, nx=True, ex=timeout_seconds))
+            acquired = bool(client.set(key, token, nx=True, ex=timeout))
         else:
             with self._guard:
                 lock = self._memory_locks.setdefault(key, threading.Lock())
-            acquired = lock.acquire(timeout=timeout_seconds)
+            acquired = lock.acquire(timeout=timeout)
 
         try:
             yield acquired
@@ -104,7 +105,7 @@ class DistributedInfrastructure:
     def allow(self, key: str, limit: int, window_seconds: int) -> bool:
         """Fixed-window distributed limiter; returns False when the quota is spent."""
         client = self.redis
-        redis_key = f"learnsync:rate:{key}"
+        redis_key = f"{settings.REDIS_KEY_PREFIX}:rate:{key}"
         if client:
             count = client.incr(redis_key)
             if count == 1:
@@ -119,6 +120,8 @@ class DistributedInfrastructure:
             count += 1
             self._memory_rate[key] = (started, count)
             return count <= limit
+
+    check_rate_limit = allow
 
 
 distributed = DistributedInfrastructure()

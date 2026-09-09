@@ -23,7 +23,7 @@ except ImportError:  # pragma: no cover - optional dependency in local tests
 
 
 celery_app = (
-    Celery("learnsync", broker=settings.RABBITMQ_URL, backend=settings.REDIS_URL)
+    Celery(settings.CELERY_APP_NAME, broker=settings.RABBITMQ_URL, backend=settings.REDIS_URL)
     if Celery
     else None
 )
@@ -62,10 +62,10 @@ if celery_app:
 
     @celery_app.task(
         bind=True,
-        name="learnsync.process_document",
+        name=settings.CELERY_TASK_NAME,
         autoretry_for=(Exception,),
-        retry_backoff=True,
-        retry_kwargs={"max_retries": 3},
+        retry_backoff=settings.CELERY_TASK_RETRY_BACKOFF,
+        retry_kwargs={"max_retries": settings.CELERY_TASK_MAX_RETRIES},
     )
     def process_document_task(
         self: Any,
@@ -78,27 +78,37 @@ if celery_app:
         document_record_json: str,
     ) -> dict[str, Any]:
         from backend.app.services.document_processor import document_service
+        from backend.app.services.database import db_service
 
         document_record = json.loads(document_record_json)
-        if document_record:
-            record, chunks = document_service.process_existing_document(
-                doc_record=document_record,
-                user_id=UUID(user_id),
-                course_id=UUID(course_id),
-                folder_id=UUID(folder_id) if folder_id else None,
-                file_name=file_name,
-                file_bytes=base64.b64decode(encoded_file),
-            )
-        else:
-            record, chunks = document_service.process_and_store_document(
-            user_id=UUID(user_id),
-            course_id=UUID(course_id),
-            folder_id=UUID(folder_id) if folder_id else None,
-            file_name=file_name,
-            file_bytes=base64.b64decode(encoded_file),
-            mime_type=mime_type,
-            )
-        return {"document_id": str(record.get("id")), "chunks_created": chunks}
+        doc_id = document_record.get("id") if document_record else None
+        try:
+            if document_record:
+                record, chunks = document_service.process_existing_document(
+                    doc_record=document_record,
+                    user_id=UUID(user_id),
+                    course_id=UUID(course_id),
+                    folder_id=UUID(folder_id) if folder_id else None,
+                    file_name=file_name,
+                    file_bytes=base64.b64decode(encoded_file),
+                )
+            else:
+                record, chunks = document_service.process_and_store_document(
+                    user_id=UUID(user_id),
+                    course_id=UUID(course_id),
+                    folder_id=UUID(folder_id) if folder_id else None,
+                    file_name=file_name,
+                    file_bytes=base64.b64decode(encoded_file),
+                    mime_type=mime_type,
+                )
+            return {"document_id": str(record.get("id")), "chunks_created": chunks}
+        except Exception as exc:
+            if doc_id:
+                try:
+                    db_service.update_document_status(UUID(str(doc_id)), status="failed", error_message=str(exc))
+                except Exception as update_err:
+                    logger.warning("Could not update document status to failed: %s", update_err)
+            raise exc
 
 else:
 

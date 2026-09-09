@@ -15,12 +15,15 @@ class EventPublisher:
     Publishes workload spike events to RabbitMQ with an in-memory queue fallback
     for offline resilience and deterministic unit testing.
     """
-    EXCHANGE_NAME = "learnsync.events"
     ROUTING_KEY_WORKLOAD_SPIKE = "workload.spike.detected"
 
     def __init__(self, rabbitmq_url: Optional[str] = None):
         self.rabbitmq_url = rabbitmq_url or settings.RABBITMQ_URL
         self._memory_queue: List[Dict[str, Any]] = []
+
+    @property
+    def EXCHANGE_NAME(self) -> str:
+        return settings.RABBITMQ_EXCHANGE
 
     def publish_workload_spike(self, event: ModeTransitionEvent) -> bool:
         """Publishes `workload.spike.detected` event."""
@@ -80,7 +83,7 @@ class EventPublisher:
         client = distributed.redis
         if client:
             try:
-                client.xadd("learnsync:events", {"event": json.dumps(event)}, maxlen=100000, approximate=True)
+                client.xadd(settings.REDIS_STREAM_KEY, {"event": json.dumps(event)}, maxlen=settings.REDIS_STREAM_MAXLEN, approximate=True)
             except Exception as exc:
                 logger.warning("Could not append learning event to Redis Stream: %s", exc)
         return published

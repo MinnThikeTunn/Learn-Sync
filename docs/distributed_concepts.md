@@ -110,16 +110,22 @@ ASYNC_DOCUMENT_PROCESSING=true
 Start the worker:
 
 ```powershell
-.\backend\.venv\Scripts\celery.exe -A backend.app.core.task_queue:celery_app worker --loglevel=INFO --pool=solo
+python -m celery -A backend.app.core.task_queue:celery_app worker --loglevel=INFO --pool=solo
 ```
 
 ## Demonstration Tests
 
 ```powershell
-.\backend\.venv\Scripts\python.exe -m pytest backend/tests/test_distributed_infrastructure.py -q
+python -m pytest backend/tests/test_distributed_compliance_100.py backend/tests/test_distributed_infrastructure.py -v
 ```
 
-The demonstration suite verifies cache expiration, concurrent lock serialization, distributed-limit behavior, replayable event metadata, and safe queue fallback.
+The demonstration suite verifies all 5 distributed concepts:
+1. **Asynchronous Queue**: Celery task enqueueing, status polling (`pending` -> `parsing` -> `indexed` / `failed`), and failure state capture.
+2. **Distributed Cache**: SHA256 key hashing across 6 dimensions, TTL expiration, and cache-hit bypass.
+3. **Distributed Locking**: Concurrency serialization on BKT & Flashcards, HTTP 409 conflict, and token-based safe Lua script release.
+4. **Event Streaming**: Emission of all 9 learning/workload events to RabbitMQ and Redis Streams (`xadd`).
+5. **Distributed Rate Limiting**: HTTP 429 backpressure on Feynman evaluation and Study Artifact generation.
+6. **Zero Hardcoding**: Dynamic configurability via `Settings` and environment variables.
 
 ## Limitations and Future Improvements
 

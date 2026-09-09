@@ -123,7 +123,7 @@ def generate_study_artifact(
     from backend.app.services.database import db_service
     effective_user_id = request.user_id or current_user
 
-    if not distributed.allow(f"artifact:{effective_user_id}", settings.LLM_RPM_LIMIT, 60):
+    if not distributed.allow(f"artifact:{effective_user_id}", settings.LLM_RPM_LIMIT, settings.RATE_LIMIT_WINDOW_SECONDS):
         raise HTTPException(status_code=429, detail="Artifact generation rate limit exceeded.")
 
     used_chunks = request.chunks
@@ -265,7 +265,8 @@ def review_flashcard(
             pass
 
     try:
-        with distributed.lock(f"flashcard:{card_id or 'inline'}") as acquired:
+        flashcard_lock_key = f"flashcard:{card_id}" if card_id else f"flashcard:{effective_user_id}:inline"
+        with distributed.lock(flashcard_lock_key) as acquired:
             if not acquired:
                 raise HTTPException(status_code=409, detail="Flashcard is being reviewed; retry shortly.")
             result = review_session_engine.submit_review(
@@ -355,7 +356,7 @@ def evaluate_feynman_explanation(
 ):
     """Evaluates student explanation with precision-gap analysis and records completion."""
     effective_user_id = current_user or request.user_id or UUID("00000000-0000-0000-0000-000000000001")
-    if not distributed.allow(f"feynman:{effective_user_id}", settings.FEYNMAN_RPM_LIMIT, 60):
+    if not distributed.allow(f"feynman:{effective_user_id}", settings.FEYNMAN_RPM_LIMIT, settings.RATE_LIMIT_WINDOW_SECONDS):
         raise HTTPException(status_code=429, detail="Feynman evaluation rate limit exceeded.")
     if not request.user_id:
         request.user_id = effective_user_id

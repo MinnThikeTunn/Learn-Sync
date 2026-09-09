@@ -17,12 +17,24 @@ class Settings(BaseSettings):
     
     # RabbitMQ Settings
     RABBITMQ_URL: str = "amqp://guest:guest@localhost:5672/"
+    RABBITMQ_EXCHANGE: str = "learnsync.events"
 
     # Distributed infrastructure.  Leave REDIS_URL empty for local fallback mode.
     REDIS_URL: Optional[str] = None
+    REDIS_KEY_PREFIX: str = "learnsync"
+    REDIS_STREAM_KEY: str = "learnsync:events"
+    REDIS_STREAM_MAXLEN: int = 100000
     ASYNC_DOCUMENT_PROCESSING: bool = False
     ARTIFACT_CACHE_TTL_SECONDS: int = 3600
+    DISTRIBUTED_LOCK_TIMEOUT_SECONDS: int = 30
+    RATE_LIMIT_WINDOW_SECONDS: int = 60
     FEYNMAN_RPM_LIMIT: int = 10
+
+    # Celery Background Worker Settings
+    CELERY_APP_NAME: str = "learnsync"
+    CELERY_TASK_NAME: str = "learnsync.process_document"
+    CELERY_TASK_MAX_RETRIES: int = 3
+    CELERY_TASK_RETRY_BACKOFF: bool = True
     
     # Google OAuth & Calendar / Gmail Settings
     GOOGLE_CLIENT_ID: Optional[str] = None

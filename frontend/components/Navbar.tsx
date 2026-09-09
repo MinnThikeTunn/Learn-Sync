@@ -33,21 +33,82 @@ interface NavbarProps {
 }
 
 export default function Navbar({
-  workloadScore = 0.42,
-  activeMode = "free",
+  workloadScore: propWorkloadScore,
+  activeMode: propActiveMode,
   learningStyle: propLearningStyle,
   onOpenBurnoutModal,
   onOpenOnboardingModal,
 }: NavbarProps) {
   const pathname = usePathname();
-  const { user, profile, signOut, setLearningStyle } = useAuth();
+  const { user, session, profile, signOut, setLearningStyle } = useAuth();
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const [styleMenuOpen, setStyleMenuOpen] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
   const styleMenuRef = useRef<HTMLDivElement>(null);
 
+  // Self-synchronizing workload telemetry
+  const [internalScore, setInternalScore] = useState<number | null>(
+    typeof propWorkloadScore === "number" ? propWorkloadScore : null
+  );
+  const [internalMode, setInternalMode] = useState<"free" | "busy" | "hysteresis_hold">(
+    propActiveMode || "free"
+  );
+
+  useEffect(() => {
+    if (typeof propWorkloadScore === "number") {
+      setInternalScore(propWorkloadScore);
+    }
+  }, [propWorkloadScore]);
+
+  useEffect(() => {
+    if (propActiveMode) {
+      setInternalMode(propActiveMode);
+    }
+  }, [propActiveMode]);
+
+  // Autonomous fetch when not passed as prop
+  useEffect(() => {
+    if (typeof propWorkloadScore === "number") return;
+
+    let isMounted = true;
+    const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000/api/v1";
+
+    const fetchLiveTelemetry = async () => {
+      try {
+        const headers: Record<string, string> = {
+          "Content-Type": "application/json",
+        };
+        if (session?.access_token) {
+          headers["Authorization"] = `Bearer ${session.access_token}`;
+        }
+        const uid = user?.id || "00000000-0000-0000-0000-000000000001";
+        headers["X-Test-User-Id"] = uid;
+
+        const res = await fetch(`${API_URL}/workload/live?days_ahead=7`, { headers });
+        if (res.ok && isMounted) {
+          const data = await res.json();
+          if (typeof data.score === "number") {
+            setInternalScore(data.score);
+          }
+          if (data.current_mode) {
+            setInternalMode(data.current_mode);
+          }
+        }
+      } catch (err) {
+        console.warn("Navbar live workload fetch fallback error:", err);
+      }
+    };
+
+    fetchLiveTelemetry();
+    return () => {
+      isMounted = false;
+    };
+  }, [propWorkloadScore, session?.access_token, user?.id]);
+
   const effectiveLearningStyle = profile?.learning_style || propLearningStyle || "visual";
-  const isBusy = activeMode === "busy";
+  const currentScore = typeof propWorkloadScore === "number" ? propWorkloadScore : internalScore;
+  const currentMode = propActiveMode || internalMode;
+  const isBusy = currentMode === "busy";
 
   const navItems = [
     { label: "Cockpit", href: "/", icon: Activity },
@@ -207,7 +268,9 @@ export default function Navbar({
           >
             {isBusy ? <Flame className="w-3.5 h-3.5 text-rose-600 animate-bounce" /> : <Activity className="w-3.5 h-3.5 text-emerald-600" />}
             <span className="hidden xs:inline">{isBusy ? "Busy Mode" : "Free Mode"}</span>
-            <span className="font-mono opacity-80">({(workloadScore * 100).toFixed(0)}%)</span>
+            <span className="font-mono opacity-80">
+              ({currentScore !== null ? `${(currentScore * 100).toFixed(0)}%` : "..."})
+            </span>
           </div>
 
           {/* Burnout Guard Button */}

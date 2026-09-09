@@ -111,6 +111,7 @@ function StudyPageContent() {
     profile?.learning_style || "visual"
   );
   const [workloadMode, setWorkloadMode] = useState<"free" | "busy">("free");
+  const [workloadScore, setWorkloadScore] = useState<number | null>(null);
   const [customTopic, setCustomTopic] = useState(paramTopic || "");
   const [isGenerating, setIsGenerating] = useState(false);
   const [generatedArtifact, setGeneratedArtifact] = useState<StudyArtifactResponse | null>(null);
@@ -178,6 +179,9 @@ function StudyPageContent() {
         });
         if (wlRes.ok) {
           const wlData = await wlRes.json();
+          if (typeof wlData.score === "number") {
+            setWorkloadScore(wlData.score);
+          }
           if (wlData.current_mode === "busy") {
             setWorkloadMode("busy");
           } else {
@@ -336,6 +340,7 @@ function StudyPageContent() {
   return (
     <div className="min-h-screen flex flex-col bg-[#f8f9fb]">
       <Navbar 
+        workloadScore={workloadScore ?? undefined}
         learningStyle={learningStyle} 
         activeMode={workloadMode} 
         onOpenOnboardingModal={() => setShowOnboarding(true)}

@@ -184,39 +184,45 @@ class DocumentService:
         doc_id = doc_record.get("id")
         self.db.update_document_status(doc_id, status="parsing")
 
-        # 1. Extract text
-        mime_type = doc_record.get("file_type", "application/octet-stream")
-        extracted_text = self.extract_text_from_bytes(file_bytes, file_name, mime_type)
-        if not extracted_text:
-            extracted_text = f"Document: {file_name}"
+        try:
+            # 1. Extract text
+            mime_type = doc_record.get("file_type", "application/octet-stream")
+            extracted_text = self.extract_text_from_bytes(file_bytes, file_name, mime_type)
+            if not extracted_text:
+                extracted_text = f"Document: {file_name}"
 
-        # 4. Chunk text
-        chunks = self.chunk_text(extracted_text)
-        if not chunks:
-            chunks = [(extracted_text, len(extracted_text.split()))]
+            # 4. Chunk text
+            chunks = self.chunk_text(extracted_text)
+            if not chunks:
+                chunks = [(extracted_text, len(extracted_text.split()))]
 
-        # 2. Insert chunks
-        chunk_records = []
-        for idx, (content, token_count) in enumerate(chunks):
-            embedding = self.generate_embedding(content)
-            chunk_records.append({
-                "id": str(uuid.uuid4()),
-                "user_id": str(user_id),
-                "document_id": str(doc_id),
-                "folder_id": str(folder_id) if folder_id else str(course_id),
-                "chunk_index": idx,
-                "content": content,
-                "token_count": token_count,
-                "embedding": embedding,
-            })
+            # 2. Insert chunks
+            chunk_records = []
+            for idx, (content, token_count) in enumerate(chunks):
+                embedding = self.generate_embedding(content)
+                chunk_records.append({
+                    "id": str(uuid.uuid4()),
+                    "user_id": str(user_id),
+                    "document_id": str(doc_id),
+                    "folder_id": str(folder_id) if folder_id else str(course_id),
+                    "chunk_index": idx,
+                    "content": content,
+                    "token_count": token_count,
+                    "embedding": embedding,
+                })
 
-        self.db.create_document_chunks(chunk_records)
+            self.db.create_document_chunks(chunk_records)
 
-        # 3. Update document status
-        self.db.update_document_status(doc_id, status="indexed")
-        doc_record["status"] = "indexed"
+            # 3. Update document status
+            self.db.update_document_status(doc_id, status="indexed")
+            doc_record["status"] = "indexed"
 
-        return doc_record, len(chunk_records)
+            return doc_record, len(chunk_records)
+        except Exception as exc:
+            self.db.update_document_status(doc_id, status="failed", error_message=str(exc))
+            doc_record["status"] = "failed"
+            doc_record["error_message"] = str(exc)
+            raise exc
 
 
 document_service = DocumentService()

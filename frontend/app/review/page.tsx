@@ -212,6 +212,7 @@ function ReviewContent() {
   };
 
   const [liveWorkloadMode, setLiveWorkloadMode] = useState<"free" | "busy">("free");
+  const [liveWorkloadScore, setLiveWorkloadScore] = useState<number | null>(null);
 
   // 1. Fetch Deck Overview from backend (only includes learned materials that reached Review)
   const fetchDeckOverview = useCallback(async () => {
@@ -243,6 +244,9 @@ function ReviewContent() {
         });
         if (wlRes.ok) {
           const wlData = await wlRes.json();
+          if (typeof wlData.score === "number") {
+            setLiveWorkloadScore(wlData.score);
+          }
           if (wlData.current_mode === "busy") {
             setLiveWorkloadMode("busy");
           } else {
@@ -833,7 +837,11 @@ function ReviewContent() {
 
   return (
     <div className="min-h-screen flex flex-col bg-[#f8f9fb]">
-      <Navbar onOpenOnboardingModal={() => setShowOnboarding(true)} />
+      <Navbar 
+        workloadScore={liveWorkloadScore ?? undefined}
+        activeMode={liveWorkloadMode}
+        onOpenOnboardingModal={() => setShowOnboarding(true)} 
+      />
 
       <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 py-8 space-y-8">
         {/* Header & Mode Tabs */}
